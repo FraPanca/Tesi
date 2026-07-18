@@ -1,0 +1,28 @@
+# --- Secrets / config locali: MAI committare ---
+.env
+**/.env
+gateway/config/.env
+
+# --- Python: virtualenv e bytecode ---
+gateway/venv/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# --- Log applicativi (runtime, non codice) ---
+gateway/logs/*.log
+mosquitto/log/*
+mosquitto/data/*
+!mosquitto/log/.gitkeep
+!mosquitto/data/.gitkeep
+
+# --- Node.js (backend + frontend) ---
+node_modules/
+frontend/build/
+backend/dist/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
