@@ -1,13 +1,14 @@
 import asyncio
 
 from devices.device_manager import readData
-from mqtt.mqtt_subscriber import start as mqtt_start
-from mqtt.mqtt_publisher import shutdown
+from mqtt import mqtt_publisher, mqtt_subscriber
 
 
 if __name__ == "__main__":
     try:
-        mqtt_start()
+        mqtt_publisher.start()
+        mqtt_subscriber.start()
         asyncio.run(readData())
     finally:
-        shutdown()
+        mqtt_publisher.shutdown()
+        mqtt_subscriber.stop()

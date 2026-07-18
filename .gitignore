@@ -3,6 +3,9 @@
 **/.env
 gateway/config/.env
 
+# --- Mosquitto: credenziali ---
+mosquitto/config/passwordfile
+
 # --- Python: virtualenv e bytecode ---
 gateway/venv/
 **/__pycache__/
