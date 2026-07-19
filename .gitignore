@@ -2,6 +2,7 @@
 .env
 **/.env
 gateway/config/.env
+**/secrets.h
 
 # --- Mosquitto: credenziali ---
 mosquitto/config/passwordfile
