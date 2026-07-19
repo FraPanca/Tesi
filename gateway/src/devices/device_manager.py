@@ -12,22 +12,25 @@ async def readData():
 
     while True:
         devices_list = load_devices()
+        devices_by_ip = {d["ip"]: d for d in devices_list}
 
-        current_ips = set(d["ip"] for d in devices_list)
+        current_ips = set(devices_by_ip.keys())
         monitored_ips = set(active_tasks.keys())
 
 
         # Adding devices
         for ip in current_ips - monitored_ips:
+            device_id = devices_by_ip[ip].get("id", ip)
+
             stop_event = asyncio.Event()
             command_queue = asyncio.Queue()
 
-            task = asyncio.create_task(monitor_device(ip, stop_event, command_queue))
+            task = asyncio.create_task(monitor_device(ip, device_id, stop_event, command_queue))
 
             active_tasks[ip] = (task, stop_event)
             device_commands[ip] = command_queue
 
-            print(f"SYSTEM =>\tStarted monitoring for {ip}")
+            print(f"SYSTEM =>\tStarted monitoring for {device_id} ({ip})")
 
 
         # Removing devices

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import warnings
 from kasa import Discover
 from kasa.module import Module
@@ -11,7 +12,7 @@ from logger.energy_logger import *
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
-async def monitor_device(ip, stop_event, command_queue):
+async def monitor_device(ip, device_id, stop_event, command_queue):
 
     retry_delay = 1
     fail_count = 0
@@ -22,7 +23,7 @@ async def monitor_device(ip, stop_event, command_queue):
             device = await Discover.discover_single(ip, username=USERNAME, password=PASSWORD)
             await device.update()
 
-            print(f"SYSTEM =>\tConnected to: {device.alias} ({ip})")
+            print(f"SYSTEM =>\tConnected to: {device_id} - {device.alias} ({ip})")
 
             # reset backoff after successful connection
             retry_delay = 1
@@ -39,7 +40,7 @@ async def monitor_device(ip, stop_event, command_queue):
                     elif command == "off":
                         await device.turn_off()
 
-                    print(f"SYSTEM =>\t{device.alias} command executed: {command}")
+                    print(f"SYSTEM =>\t{device_id} command executed: {command}")
 
                 except asyncio.QueueEmpty:
                     pass
@@ -49,29 +50,30 @@ async def monitor_device(ip, stop_event, command_queue):
                 realtime = energy.realtime
 
                 data = {
-                    "deviceId": device.alias,
+                    "deviceId": device_id,
+                    "timestamp": time.time(),
                     "power": realtime.power,
                     "voltage": realtime.voltage,
                     "current": realtime.current,
                 }
 
-                publish(f"home/{device.alias}/raw", json.dumps(data))
+                publish(f"home/{device_id}/raw", json.dumps(data))
 
                 print(
-                    f"DEVICE: {device.alias} =>\n\t\t"
+                    f"DEVICE: {device_id} =>\n\t\t"
                     f"Power: {data['power']:.2f} W | "
                     f"Voltage: {data['voltage']:.2f} V | "
                     f"Current: {data['current']:.3f} A"
                 )
 
-                log_energy(device.alias, data)
+                log_energy(device_id, data)
 
                 await asyncio.sleep(POLLING_INTERVAL)
 
             await device.disconnect()
 
         except asyncio.CancelledError:
-            print(f"ERROR =>\t{ip} has been canceled")
+            print(f"ERROR =>\t{device_id} ({ip}) has been canceled")
             raise
 
         except Exception as e:
@@ -79,12 +81,12 @@ async def monitor_device(ip, stop_event, command_queue):
             if retry_delay == BACKOFF_TIME:
                 fail_count += 1
 
-            print(f"ERROR =>\tUnable to connect to {ip}: {e}")
-            log_error(f"Unable to connect to {ip}: {e}")
+            print(f"ERROR =>\tUnable to connect to {device_id} ({ip}): {e}")
+            log_error(f"Unable to connect to {device_id} ({ip}): {e}")
 
             if fail_count != 0 and fail_count % WARNING_INTERVAL == 0:
-                print(f"WARNING =>\t{ip} has failed {fail_count} consecutive times, retrying...")
-                log_warning(f"Failed connection to {ip} {fail_count} consecutive times")
+                print(f"WARNING =>\t{device_id} ({ip}) has failed {fail_count} consecutive times, retrying...")
+                log_warning(f"Failed connection to {device_id} ({ip}) {fail_count} consecutive times")
 
             await asyncio.sleep(retry_delay)
             retry_delay = min(retry_delay * 2, BACKOFF_TIME)

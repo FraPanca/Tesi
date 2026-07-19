@@ -4,6 +4,7 @@ import paho.mqtt.client as mqtt
 from config import MQTT_BROKER, MQTT_PORT, MQTT_USER, MQTT_PASSWORD
 from devices.device_manager import send_command
 from registry.device_registry import add_device, remove_device
+from logger.energy_logger import log_warning
 
 
 mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1)
@@ -19,23 +20,27 @@ def on_connect(client, userdata, flags, rc):
 
 def on_message(client, userdata, msg):
     topic = msg.topic
-    payload = json.loads(msg.payload.decode())
 
-    parts = topic.split("/")
-    device = parts[1]
-    action = payload.get("action")
+    try:
+        payload = json.loads(msg.payload.decode())
+        parts = topic.split("/")
+        device = parts[1]
+        action = payload.get("action")
 
-    print("SYSTEM =>\tReceived MQTT command: ", topic, payload)
+        print("SYSTEM =>\tReceived MQTT command: ", topic, payload)
 
-    if device == "system":
-        if action == "add":
-            add_device(payload["ip"])
-        elif action == "remove":
-            remove_device(payload["ip"])
-    else:
-        if action in ["on", "off"]:
-            ip = payload.get("ip")
-            send_command(ip, action)
+        if device == "system":
+            if action == "add":
+                add_device(payload["ip"], payload.get("id"))
+            elif action == "remove":
+                remove_device(payload["ip"])
+        else:
+            if action in ["on", "off"]:
+                send_command(payload["ip"], action)
+
+    except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
+        print(f"WARNING =>\tMalformed MQTT message on {topic}: {e}")
+        log_warning(f"Malformed MQTT message on {topic}: {e}")
 
 
 mqtt_client.on_connect = on_connect
