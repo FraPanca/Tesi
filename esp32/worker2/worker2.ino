@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <string.h>
 #include "config.h"
 
 #define WORKER_ID 2
@@ -10,6 +11,7 @@
 #else
   #define TOPIC_SUBSCRIBE TOPIC_WORKER2_INTERNAL
 #endif
+
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -35,6 +37,48 @@ struct GruppoPresa {
 };
 
 GruppoPresa gruppi[MAX_PRESE];
+
+
+struct MessaggioPendente {
+  bool inUso = false;
+  char topic[48];
+  char payload[256];
+  size_t lunghezza = 0;
+  uint32_t millisPrimoTentativo = 0;
+};
+
+MessaggioPendente pendenti[MAX_PENDENTI];
+
+
+bool accodaPendente(const char* topic, const uint8_t* payload, size_t lunghezza) {
+  for (int i = 0; i < MAX_PENDENTI; i++) {
+    if (!pendenti[i].inUso) {
+      strncpy(pendenti[i].topic, topic, sizeof(pendenti[i].topic) - 1);
+      pendenti[i].topic[sizeof(pendenti[i].topic) - 1] = '\0';
+      pendenti[i].lunghezza = min(lunghezza, sizeof(pendenti[i].payload));
+      memcpy(pendenti[i].payload, payload, pendenti[i].lunghezza);
+      pendenti[i].millisPrimoTentativo = millis();
+      pendenti[i].inUso = true;
+      return true;
+    }
+  }
+  return false; // coda piena
+}
+
+void ritentaPendenti() {
+  if (!client.connected()) return;
+  uint32_t ora = millis();
+  for (int i = 0; i < MAX_PENDENTI; i++) {
+    if (!pendenti[i].inUso) continue;
+
+    if (client.publish(pendenti[i].topic, (const uint8_t*)pendenti[i].payload, pendenti[i].lunghezza)) {
+      pendenti[i].inUso = false;
+    } else if ((ora - pendenti[i].millisPrimoTentativo) > TIMEOUT_PENDENTE_MS) {
+      Serial.printf("ERRORE: dato optimized perso definitivamente su %s dopo %lus di tentativi\n", pendenti[i].topic, TIMEOUT_PENDENTE_MS / 1000UL);
+      pendenti[i].inUso = false;
+    }
+  }
+}
 
 int trovaOCreaGruppo(const String& presaId) {
   for (int i = 0; i < MAX_PRESE; i++) {
@@ -98,7 +142,11 @@ void pubblicaOttimizzato(GruppoPresa& g) {
   size_t n = serializeJson(doc, buffer);
 
   String topic = "home/" + g.presaId + "/optimized";
-  client.publish(topic.c_str(), (const uint8_t*)buffer, n);
+  if (!client.publish(topic.c_str(), (const uint8_t*)buffer, n)) {
+    if (!accodaPendente(topic.c_str(), (const uint8_t*)buffer, n)) {
+      Serial.println("ERRORE: pubblicazione fallita e coda pendenti piena, dato perso subito: " + topic);
+    }
+  }
 
   g.attivo = false;
   g.conteggio = 0;
@@ -247,4 +295,5 @@ void loop() {
   }
   client.loop();
   controllaTimeout();
+  ritentaPendenti();
 }

@@ -18,6 +18,8 @@
 #define SOGLIA_PERCENTUALE     0.02f    // tolleranza relativa (+-2%), usata ad alta potenza
 #define TIMEOUT_GRUPPO_MS      30000UL  // se non arrivano campioni compatibili entro 30s, chiudi il gruppo
 #define MAX_PRESE              8        // numero massimo di prese gestibili in parallelo da un worker
+#define MAX_PENDENTI           4        // messaggi optimized in coda dopo un fallimento di pubblicazione
+#define TIMEOUT_PENDENTE_MS    60000UL  // dopo quanto tempo si rinuncia definitivamente a un pendente
 
 // --- Limiti di validita' fisica (scarto errori di lettura) ---
 #define POWER_MAX_W    3680.0f  // limite presa italiana standard (16A x 230V)
