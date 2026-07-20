@@ -19,6 +19,62 @@ services:
       retries: 3
       start_period: 10s
 
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      # Bind mount esplicito sull'HDD esterno, non un volume Docker nominato: un volume nominato finirebbe 
+      # comunque sotto la data-root di Docker (di norma sulla SD). Le directory sono già state create e 
+      # assegnate a UID 999 in fase di setup del disco.
+      - /mnt/wd1tb/iot-energy/mongodb:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval \"db.adminCommand('ping')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # Grace period generoso: deve poter chiudere in modo pulito su SIGTERM, per evitare rischi di corruzione dati sull'HDD.
+    stop_grace_period: 30s
+
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - /mnt/wd1tb/iot-energy/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    stop_grace_period: 15s
+
+  backend:
+    build: ./backend
+    container_name: backend
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      MONGO_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/iot_energy?authSource=admin
+      REDIS_URI: redis://redis:6379
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USER: ${MQTT_USER}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
 networks:
   default:
     name: iot-net

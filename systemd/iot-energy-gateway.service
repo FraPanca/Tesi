@@ -1,0 +1,19 @@
+[Unit]
+Description=IoT Energy Monitor - Gateway (prese Tapo -> MQTT)
+After=iot-energy-docker.service network-online.target
+Requires=iot-energy-docker.service
+Wants=network-online.target
+
+# CAMBIARE i successivi path con la propria home
+[Service]
+Type=simple
+WorkingDirectory=/home/francesco/iot/gateway
+# Se il gateway non usa un virtualenv: /usr/bin/python3
+ExecStart=/home/francesco/iot/gateway/venv/bin/python3 /home/francesco/iot/gateway/src/main.py
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
