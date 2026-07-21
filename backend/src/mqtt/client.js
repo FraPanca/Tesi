@@ -9,15 +9,19 @@ function connettiMqtt() {
   client = mqtt.connect(url, {
     username: process.env.MQTT_USER,
     password: process.env.MQTT_PASSWORD,
+    // clientId stabile + clean:false = sessione persistente: il broker ricorda la subscription e
+    // mette in coda i messaggi QoS>=1 arrivati mentre il backend è disconnesso invece di scartarli.
+    clientId: 'backend-iot-energy',
+    clean: false,
   });
-
+ 
   client.on('connect', () => {
     console.log('[MQTT] connesso al broker:', url);
-    client.subscribe('home/+/optimized', (err) => {
+    client.subscribe('home/+/optimized', { qos: 1 }, (err) => {
       if (err) console.error('[MQTT] errore sottoscrizione:', err.message);
     });
   });
-
+ 
   client.on('message', async (topic, payload) => {
     try {
       const presaId = estraiPresaId(topic);
@@ -28,9 +32,9 @@ function connettiMqtt() {
       console.error('[MQTT] errore elaborazione messaggio:', err.message);
     }
   });
-
+ 
   client.on('error', (err) => console.error('[MQTT] errore connessione:', err.message));
-
+ 
   return client;
 }
 
