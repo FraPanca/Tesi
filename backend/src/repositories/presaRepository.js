@@ -9,6 +9,10 @@ async function findByPresaId(presaId) {
   return Presa.findOne({ presaId });
 }
 
+async function findByIp(ip) {
+  return Presa.findOne({ ip });
+}
+
 async function create(data) {
   return Presa.create(data);
 }
@@ -25,4 +29,4 @@ async function deleteByPresaId(presaId) {
 }
 
 
-module.exports = { findAll, findByPresaId, create, updateByPresaId, deleteByPresaId };
+module.exports = { findAll, findByPresaId, findByIp, create, updateByPresaId, deleteByPresaId };

@@ -1,7 +1,16 @@
 const mqtt = require('mqtt');
+const EventEmitter = require('events');
 const consumoService = require('../services/consumoService');
 
 let client;
+
+// Emette eventi per i flussi MQTT che servono anche a chi non è il consumer principale del dato.
+const mqttEvents = new EventEmitter();
+
+const TOPIC_OPTIMIZED = 'home/+/optimized';
+const TOPIC_FLUSH_COMANDO = 'home/system/flush';
+const TOPIC_HEALTHCHECK_COMANDO = 'home/system/healthcheck';
+const TOPIC_HEALTHCHECK_RISPOSTA = 'home/system/healthcheck/response';
 
 
 function connettiMqtt() {
@@ -14,28 +23,49 @@ function connettiMqtt() {
     clientId: 'backend-iot-energy',
     clean: false,
   });
- 
+
   client.on('connect', () => {
     console.log('[MQTT] connesso al broker:', url);
-    client.subscribe('home/+/optimized', { qos: 1 }, (err) => {
-      if (err) console.error('[MQTT] errore sottoscrizione:', err.message);
+    client.subscribe(TOPIC_OPTIMIZED, { qos: 1 }, (err) => {
+      if (err) console.error('[MQTT] errore sottoscrizione optimized:', err.message);
+    });
+
+    // QoS 0
+    client.subscribe(TOPIC_HEALTHCHECK_RISPOSTA, { qos: 0 }, (err) => {
+      if (err) console.error('[MQTT] errore sottoscrizione healthcheck response:', err.message);
     });
   });
- 
+
   client.on('message', async (topic, payload) => {
     try {
+      if (topic === TOPIC_HEALTHCHECK_RISPOSTA) {
+        gestisciRispostaHealthcheck(payload);
+        return;
+      }
+
       const presaId = estraiPresaId(topic);
       const grezzo = JSON.parse(payload.toString());
       const dato = mappaDatoOttimizzato(grezzo);
       await consumoService.salvaDatoOttimizzato({ presaId, ...dato });
+
+      mqttEvents.emit('datoOttimizzato', { presaId, ...dato });
     } catch (err) {
       console.error('[MQTT] errore elaborazione messaggio:', err.message);
     }
   });
- 
+
   client.on('error', (err) => console.error('[MQTT] errore connessione:', err.message));
- 
+
   return client;
+}
+
+function gestisciRispostaHealthcheck(payload) {
+  try {
+    const { componente, stato } = JSON.parse(payload.toString());
+    mqttEvents.emit('healthcheckResponse', { componente, stato });
+  } catch (err) {
+    console.error('[MQTT] risposta healthcheck non valida:', err.message);
+  }
 }
 
 function estraiPresaId(topic) {
@@ -74,5 +104,25 @@ function rimuoviDispositivo(ip) {
   client.publish('home/system/commands', JSON.stringify({ action: 'remove', ip }));
 }
 
+// Comanda agli ESP32 elaboratori l'invio immediato dei dati aggregati correnti, indipendentemente dalla finestra di aggregazione in corso.
+function inviaComandoFlush() {
+  if (!client) throw new Error('Client MQTT non ancora connesso');
+  client.publish(TOPIC_FLUSH_COMANDO, JSON.stringify({}));
+}
 
-module.exports = { connettiMqtt, inviaComando, registraDispositivo, rimuoviDispositivo };
+// Comanda un healthcheck a gateway ed ESP32.
+function inviaComandoHealthcheck() {
+  if (!client) throw new Error('Client MQTT non ancora connesso');
+  client.publish(TOPIC_HEALTHCHECK_COMANDO, JSON.stringify({}));
+}
+
+
+module.exports = {
+  connettiMqtt,
+  inviaComando,
+  registraDispositivo,
+  rimuoviDispositivo,
+  inviaComandoFlush,
+  inviaComandoHealthcheck,
+  mqttEvents,
+};

@@ -1,4 +1,5 @@
 const presaRepository = require('../repositories/presaRepository');
+const consumoService = require('./consumoService');
 const mqttClient = require('../mqtt/client');
 
 class ServiceError extends Error {
@@ -24,9 +25,14 @@ async function creaPresa({ presaId, nome, ip, sogliaPotenza }) {
     throw new ServiceError('presaId, nome e ip sono obbligatori', 400);
   }
 
-  const esistente = await presaRepository.findByPresaId(presaId);
-  if (esistente) {
+  const esistentePerId = await presaRepository.findByPresaId(presaId);
+  if (esistentePerId) {
     throw new ServiceError(`Presa "${presaId}" già registrata`, 409);
+  }
+
+  const esistentePerIp = await presaRepository.findByIp(ip);
+  if (esistentePerIp) {
+    throw new ServiceError(`IP "${ip}" già usato dalla presa "${esistentePerIp.presaId}"`, 409);
   }
 
   const presa = await presaRepository.create({ presaId, nome, ip, sogliaPotenza });
@@ -61,6 +67,10 @@ async function rimuoviPresa(presaId) {
   if (!rimossa) throw new ServiceError(`Presa "${presaId}" non trovata`, 404);
 
   mqttClient.rimuoviDispositivo(rimossa.ip);
+
+  // Senza questo la chiave "recenti" e le eventuali chiavi "range" di questa presa restano in
+  // Redis come dati orfani: nessun dato futuro arriverà mai più con questo presaId a sovrascriverle.
+  await consumoService.cancellaCachePresa(presaId);
 
   return rimossa;
 }

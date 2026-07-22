@@ -8,6 +8,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/francesco/iot/gateway
+# PYTHONUNBUFFERED: "journalctl -f" così mostra in tempo reale l'stdout/stderr.
+Environment=PYTHONUNBUFFERED=1
 # Se il gateway non usa un virtualenv: /usr/bin/python3
 ExecStart=/home/francesco/iot/gateway/venv/bin/python3 /home/francesco/iot/gateway/src/main.py
 Restart=on-failure

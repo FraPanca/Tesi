@@ -21,10 +21,20 @@
 #define MAX_PENDENTI           4        // messaggi optimized in coda dopo un fallimento di pubblicazione
 #define TIMEOUT_PENDENTE_MS    60000UL  // dopo quanto tempo si rinuncia definitivamente a un pendente
 
+// --- Gestione LED ---
+#define LED_BUILTIN    2                      // pin LED builtin
+#define LED_ON_MS      5000UL                 // durata accensione LED
+#define LED_PERIOD_MS  (5UL * 60UL * 1000UL)  // ogni 5 minuti
+
 // --- Limiti di validita' fisica (scarto errori di lettura) ---
 #define POWER_MAX_W    3680.0f  // limite presa italiana standard (16A x 230V)
 #define VOLTAGE_MIN_V  180.0f
 #define VOLTAGE_MAX_V  260.0f
 #define CURRENT_MAX_A  16.0f
+
+// --- Topic MQTT amministrativi (comandi da backend-core) ---
+#define TOPIC_ADMIN_FLUSH              "home/system/flush"                 // solo worker
+#define TOPIC_ADMIN_HEALTHCHECK        "home/system/healthcheck"           // load balancer + worker
+#define TOPIC_ADMIN_HEALTHCHECK_RESP   "home/system/healthcheck/response"  // load balancer + worker
 
 #endif

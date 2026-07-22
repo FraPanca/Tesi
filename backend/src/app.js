@@ -18,9 +18,13 @@ app.use(express.json());
 
 app.use('/api/prese', require('./routes/presaRoutes'));
 app.use('/api/consumi', require('./routes/consumoRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
 // TODO: montare qui il router previsioni quando sarà definito
 
-// L'error handler va montato per ultimo: solo così Express lo riconosce come destinazione degli errori inoltrati dai controller async.
+// I controller (routes/*, controllers/*) non hanno try/catch espliciti sulle chiamate async: da Express 5 in poi una 
+// promise rifiutata ritornata da un route handler viene inoltrata automaticamente a next(err) e arriva comunque qui 
+// sotto. Con Express 4 sarebbe servito un wrapper esplicito tipo asyncHandler su ogni handler dei controller.
+// L'error handler va montato per ultimo: solo così Express lo riconosce come destinazione degli errori.
 app.use(errorHandler);
 
 

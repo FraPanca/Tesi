@@ -39,6 +39,23 @@ struct GruppoPresa {
 GruppoPresa gruppi[MAX_PRESE];
 
 
+bool ledAcceso = false;
+uint32_t ledAccesoDaMillis = 0;
+
+void accendiLed() {
+  digitalWrite(LED_BUILTIN, HIGH);
+  ledAcceso = true;
+  ledAccesoDaMillis = millis();
+}
+
+void aggiornaLed() {
+  if (ledAcceso && (millis() - ledAccesoDaMillis) >= LED_DURATA_MS) {
+    digitalWrite(LED_BUILTIN, LOW);
+    ledAcceso = false;
+  }
+}
+
+
 struct MessaggioPendente {
   bool inUso = false;
   char topic[48];
@@ -129,6 +146,8 @@ void avviaGruppo(GruppoPresa& g, const String& presaId, float potenza, float ten
 void pubblicaOttimizzato(GruppoPresa& g) {
   if (g.conteggio == 0) return;
 
+  accendiLed();
+
   JsonDocument doc;
   doc["presa_id"] = g.presaId;
   doc["power_w"] = g.sommaPotenza / g.conteggio;
@@ -153,6 +172,28 @@ void pubblicaOttimizzato(GruppoPresa& g) {
   g.sommaPotenza = g.sommaTensione = g.sommaCorrente = 0;
 }
 
+void rispondiHealthcheck() {
+  JsonDocument doc;
+  doc["componente"] = "esp32_worker" + String(WORKER_ID);
+  doc["stato"] = "ok";
+  char buffer[64];
+  size_t n = serializeJson(doc, buffer);
+  client.publish(TOPIC_ADMIN_HEALTHCHECK_RESP, (const uint8_t*)buffer, n);
+}
+
+// Forza la pubblicazione di tutti i gruppi attivi, a prescindere da TIMEOUT_GRUPPO_MS.
+void gestisciFlush() {
+  for (int i = 0; i < MAX_PRESE; i++) {
+    GruppoPresa& g = gruppi[i];
+    if (!g.attivo) continue;
+
+    if (g.sospetto) {
+      chiudiEApriConCandidato(g);
+    }
+    pubblicaOttimizzato(g);
+  }
+}
+
 // Pubblica il gruppo accumulato finora SENZA il candidato, poi ne apre uno nuovo a partire dal candidato (che diventa il primo campione).
 void chiudiEApriConCandidato(GruppoPresa& g) {
   pubblicaOttimizzato(g);
@@ -160,6 +201,15 @@ void chiudiEApriConCandidato(GruppoPresa& g) {
 }
 
 void onMessage(char* topic, byte* payload, unsigned int length) {
+  if (strcmp(topic, TOPIC_ADMIN_HEALTHCHECK) == 0) {
+    rispondiHealthcheck();
+    return;
+  }
+  if (strcmp(topic, TOPIC_ADMIN_FLUSH) == 0) {
+    gestisciFlush();
+    return;
+  }
+
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, payload, length);
   if (err) {
@@ -271,6 +321,8 @@ void connettiMQTT() {
     if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
       Serial.println("OK");
       client.subscribe(TOPIC_SUBSCRIBE);
+      client.subscribe(TOPIC_ADMIN_FLUSH);
+      client.subscribe(TOPIC_ADMIN_HEALTHCHECK);
     } else {
       Serial.printf("fallita, rc=%d, riprovo tra 2s\n", client.state());
       delay(2000);
@@ -280,6 +332,8 @@ void connettiMQTT() {
 
 void setup() {
   Serial.begin(115200);
+  pinMode(LED_BUILTIN, OUTPUT);
+
   connettiWiFi();
 
   client.setServer(MQTT_BROKER, MQTT_PORT);
@@ -296,4 +350,5 @@ void loop() {
   client.loop();
   controllaTimeout();
   ritentaPendenti();
+  aggiornaLed();
 }

@@ -14,7 +14,7 @@ gateway/venv/
 *.pyo
 
 # --- Log applicativi (runtime, non codice) ---
-gateway/logs/*.log
+gateway/logs/*.log*
 mosquitto/log/*
 mosquitto/data/*
 !mosquitto/log/.gitkeep

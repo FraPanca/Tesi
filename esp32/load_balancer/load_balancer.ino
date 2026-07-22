@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 #include <string.h>
 #include "config.h"
 
@@ -9,6 +10,15 @@
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+
+void rispondiHealthcheck() {
+  JsonDocument doc;
+  doc["componente"] = "esp32_load_balancer";
+  doc["stato"] = "ok";
+  char buffer[64];
+  size_t n = serializeJson(doc, buffer);
+  client.publish(TOPIC_ADMIN_HEALTHCHECK_RESP, (const uint8_t*)buffer, n);
+}
 
 // Estrae il deviceId dal topic "home/<deviceId>/raw" e ne calcola un hash pari/dispari per decidere sempre lo stesso worker per la stessa presa.
 const char* topicWorkerPerDevice(const char* topic) {
@@ -27,6 +37,11 @@ const char* topicWorkerPerDevice(const char* topic) {
 }
 
 void onMessage(char* topic, byte* payload, unsigned int length) {
+  if (strcmp(topic, TOPIC_ADMIN_HEALTHCHECK) == 0) {
+    rispondiHealthcheck();
+    return;
+  }
+  
   const char* topicWorker = topicWorkerPerDevice(topic);
 
   // 'payload' punta al buffer interno di PubSubClient, lo stesso che publish() sovrascrive per costruire il pacchetto in uscita:
@@ -57,6 +72,7 @@ void connettiMQTT() {
     if (client.connect("esp32-load-balancer", MQTT_USER, MQTT_PASS)) {
       Serial.println("OK");
       client.subscribe(TOPIC_RAW_WILDCARD);
+      client.subscribe(TOPIC_ADMIN_HEALTHCHECK);
     } else {
       Serial.printf("fallita, rc=%d, riprovo tra 2s\n", client.state());
       delay(2000);
@@ -64,8 +80,15 @@ void connettiMQTT() {
   }
 }
 
+void aggiornaLed() {
+  uint32_t faseCiclo = millis() % LED_PERIOD_MS;
+  digitalWrite(LED_BUILTIN, faseCiclo < LED_ON_MS ? HIGH : LOW);
+}
+
 void setup() {
   Serial.begin(115200);
+  pinMode(LED_BUILTIN, OUTPUT);
+
   connettiWiFi();
 
   client.setServer(MQTT_BROKER, MQTT_PORT);
@@ -80,4 +103,5 @@ void loop() {
     connettiMQTT();
   }
   client.loop();
+  aggiornaLed();
 }
