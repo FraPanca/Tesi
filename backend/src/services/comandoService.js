@@ -19,7 +19,7 @@ async function inviaComando(presaId, azione) {
 
   // Viene pubblicato il comando ma non aggiorna subito "stato" su Presa, perché lo stato effettivo
   // verrà confermato quando arriverà il prossimo dato ottimizzato dalla presa reale.
-  mqttClient.inviaComando(presaId, presa.ip, azione);
+  await mqttClient.inviaComando(presaId, presa.ip, azione);
 
   // Aggiornamento ottimistico: si ha certezza che il comando è stato pubblicato sul broker,
   // non che la presa fisica l'abbia eseguito (MQTT QoS 0, nessun ack end-to-end nel gateway).
