@@ -1,6 +1,8 @@
 const mqtt = require('mqtt');
 const EventEmitter = require('events');
 const consumoService = require('../services/consumoService');
+const { retryConBackoff } = require('../utils/retry');
+const Log = require('../models/Log');
 
 let client;
 
@@ -46,7 +48,19 @@ function connettiMqtt() {
       const presaId = estraiPresaId(topic);
       const grezzo = JSON.parse(payload.toString());
       const dato = mappaDatoOttimizzato(grezzo);
-      await consumoService.salvaDatoOttimizzato({ presaId, ...dato });
+      
+      try {
+        await retryConBackoff(() => consumoService.salvaDatoOttimizzato({ presaId, ...dato }));
+      } catch (err) {
+        console.error(`[MQTT] salvataggio dato optimized fallito dopo i retry (${presaId}):`, err.message);
+        await Log.create({
+          origine: 'sistema',
+          livello: 'error',
+          evento: 'mqtt.retry_esaurito',
+          messaggio: `Salvataggio dato optimized fallito dopo i retry su ${presaId}`,
+          metadati: { presaId },
+        }).catch(() => {});
+      }
 
       mqttEvents.emit('datoOttimizzato', { presaId, ...dato });
     } catch (err) {
@@ -85,38 +99,75 @@ function mappaDatoOttimizzato(payloadEsp32) {
   };
 }
 
+
+function pubblicaAsync(topic, payload) {
+  return new Promise((resolve, reject) => {
+    client.publish(topic, payload, (err) => (err ? reject(err) : resolve()));
+  });
+}
+ 
+// Wrapper comune a tutte le pubblicazioni verso gateway/ESP32: retry con backoff.
+async function pubblicaConRetry(topic, payload, { messaggio, metadati } = {}) {
+  try {
+    await retryConBackoff(() => pubblicaAsync(topic, payload));
+  } catch (err) {
+    console.error(`[MQTT] pubblicazione fallita dopo i retry su ${topic}:`, err.message);
+    await Log.create({
+      origine: 'sistema',
+      livello: 'error',
+      evento: 'mqtt.retry_esaurito',
+      messaggio: messaggio || `Pubblicazione fallita dopo i retry su ${topic}`,
+      metadati: metadati || {},
+    }).catch(() => {});
+    throw err;
+  }
+}
+ 
 // Pubblica un comando on/off.
-function inviaComando(presaId, ip, azione) {
+async function inviaComando(presaId, ip, azione) {
   if (!client) throw new Error('Client MQTT non ancora connesso');
   const topic = `home/${presaId}/commands`;
-  client.publish(topic, JSON.stringify({ action: azione, ip }));
+  await pubblicaConRetry(topic, JSON.stringify({ action: azione, ip }), {
+    messaggio: `Pubblicazione comando fallita dopo i retry su ${topic}`,
+    metadati: { presaId, azione },
+  });
 }
-
+ 
 // Registra un dispositivo presso il gateway (gateway/src/registry/device_registry.py).
-function registraDispositivo(ip, presaId) {
+async function registraDispositivo(ip, presaId) {
   if (!client) throw new Error('Client MQTT non ancora connesso');
-  client.publish('home/system/commands', JSON.stringify({ action: 'add', ip, id: presaId }));
+  await pubblicaConRetry('home/system/commands', JSON.stringify({ action: 'add', ip, id: presaId }), {
+    messaggio: `Registrazione dispositivo fallita dopo i retry (${presaId})`,
+    metadati: { presaId, ip },
+  });
 }
-
+ 
 // Rimuove un dispositivo presso il gateway (gateway/src/registry/device_registry.py).
-function rimuoviDispositivo(ip) {
+async function rimuoviDispositivo(ip) {
   if (!client) throw new Error('Client MQTT non ancora connesso');
-  client.publish('home/system/commands', JSON.stringify({ action: 'remove', ip }));
+  await pubblicaConRetry('home/system/commands', JSON.stringify({ action: 'remove', ip }), {
+    messaggio: `Deregistrazione dispositivo fallita dopo i retry (${ip})`,
+    metadati: { ip },
+  });
 }
-
+ 
 // Comanda agli ESP32 elaboratori l'invio immediato dei dati aggregati correnti, indipendentemente dalla finestra di aggregazione in corso.
-function inviaComandoFlush() {
+async function inviaComandoFlush() {
   if (!client) throw new Error('Client MQTT non ancora connesso');
-  client.publish(TOPIC_FLUSH_COMANDO, JSON.stringify({}));
+  await pubblicaConRetry(TOPIC_FLUSH_COMANDO, JSON.stringify({}), {
+    messaggio: 'Comando di flush fallito dopo i retry',
+  });
 }
-
-// Comanda un healthcheck a gateway ed ESP32.
-function inviaComandoHealthcheck() {
+ 
+// Comanda un healthcheck a gateway ed ESP32..
+async function inviaComandoHealthcheck() {
   if (!client) throw new Error('Client MQTT non ancora connesso');
-  client.publish(TOPIC_HEALTHCHECK_COMANDO, JSON.stringify({}));
+  await pubblicaConRetry(TOPIC_HEALTHCHECK_COMANDO, JSON.stringify({}), {
+    messaggio: 'Comando di healthcheck fallito dopo i retry',
+  });
 }
-
-
+ 
+ 
 module.exports = {
   connettiMqtt,
   inviaComando,

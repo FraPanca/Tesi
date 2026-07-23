@@ -10,15 +10,17 @@ const COMPONENTI_ATTESI = ['gateway', 'esp32_load_balancer', 'esp32_worker1', 'e
 // Pubblica il comando di flush e restituisce la lista dei dati "optimized" arrivati nella finestra di ascolto successiva.
 async function richiediFlush() {
   const datiRicevuti = [];
-
+ 
   return new Promise((resolve) => {
     function onDato(dato) {
       datiRicevuti.push(dato);
     }
-
+ 
     mqttEvents.on('datoOttimizzato', onDato);
-    inviaComandoFlush();
-
+    inviaComandoFlush().catch((err) => {
+      console.error('[AdminService] comando di flush non pubblicato:', err.message);
+    });
+ 
     setTimeout(() => {
       mqttEvents.off('datoOttimizzato', onDato);
       resolve(datiRicevuti);
@@ -29,18 +31,20 @@ async function richiediFlush() {
 // Pubblica il comando di healthcheck e restituisce { componente: "OK" | "Errore" } per ciascun componente.
 async function richiediHealthcheck() {
   const risposte = new Map(); // componente -> stato riportato dal componente stesso
-
+ 
   return new Promise((resolve) => {
     function onRisposta({ componente, stato }) {
       risposte.set(componente, stato);
     }
-
+ 
     mqttEvents.on('healthcheckResponse', onRisposta);
-    inviaComandoHealthcheck();
-
+    inviaComandoHealthcheck().catch((err) => {
+      console.error('[AdminService] comando di healthcheck non pubblicato:', err.message);
+    });
+ 
     setTimeout(() => {
       mqttEvents.off('healthcheckResponse', onRisposta);
-
+ 
       const risultato = {};
       for (const componente of COMPONENTI_ATTESI) {
         const stato = risposte.get(componente);

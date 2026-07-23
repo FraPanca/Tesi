@@ -18,7 +18,9 @@ app.use(express.json());
 
 app.use('/api/prese', require('./routes/presaRoutes'));
 app.use('/api/consumi', require('./routes/consumoRoutes'));
+app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/logs', require('./routes/logRoutes'));
 // TODO: montare qui il router previsioni quando sarà definito
 
 // I controller (routes/*, controllers/*) non hanno try/catch espliciti sulle chiamate async: da Express 5 in poi una 
