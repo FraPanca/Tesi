@@ -1,0 +1,202 @@
+.admin-logs {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.admin-logs__intestazione {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-logs__filtri {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.admin-logs__filtri label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+}
+
+.admin-logs__filtri input,
+.admin-logs__filtri select {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--color-ink);
+}
+
+.admin-logs__errore {
+  color: var(--color-danger);
+  font-size: 0.9rem;
+}
+
+.log-table-wrapper {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow-x: auto;
+}
+
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.log-table th {
+  text-align: left;
+  font-family: var(--font-display);
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-ink-soft);
+}
+
+.log-table td {
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.log-table__riga:last-child td {
+  border-bottom: none;
+}
+
+.log-table__badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.log-table__badge--info {
+  background: rgba(47, 102, 144, 0.12);
+  color: var(--color-wire-neutro);
+}
+
+.log-table__badge--warn {
+  background: rgba(217, 142, 42, 0.15);
+  color: var(--color-accent);
+}
+
+.log-table__badge--error {
+  background: rgba(179, 57, 44, 0.12);
+  color: var(--color-danger);
+}
+
+.log-table__stato {
+  color: var(--color-ink-soft);
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.admin-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.admin-diagnostics__nota {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+}
+
+.admin-diagnostics__blocco {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+.admin-diagnostics__blocco:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.admin-diagnostics__intestazione-blocco {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.admin-diagnostics__errore {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--color-danger);
+}
+
+.admin-diagnostics__vuoto {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--color-ink-soft);
+}
+
+.admin-diagnostics__letture {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+.admin-diagnostics__letture li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--color-ink-soft);
+}
+.admin-diagnostics__letture-presa {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.admin-diagnostics__stato-hardware {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.admin-diagnostics__stato-hardware li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.admin-diagnostics__badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.admin-diagnostics__badge--ok {
+  background: rgba(92, 122, 46, 0.14);
+  color: var(--color-wire-terra);
+}
+.admin-diagnostics__badge--errore {
+  background: rgba(179, 57, 44, 0.12);
+  color: var(--color-danger);
+}

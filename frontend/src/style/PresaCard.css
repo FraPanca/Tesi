@@ -1,0 +1,115 @@
+.presa-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 200px;
+}
+
+.presa-card__rimuovi {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  border: none;
+  background: transparent;
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.25rem;
+}
+.presa-card__rimuovi:hover {
+  color: var(--color-danger);
+}
+
+.presa-card__intestazione {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.presa-card__pallino {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+.is-on .presa-card__pallino {
+  background: var(--color-accent);
+}
+.presa-card__pallino--pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(217, 142, 42, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(217, 142, 42, 0);
+  }
+}
+
+.presa-card__nome {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.presa-card__nome:hover {
+  text-decoration: underline;
+}
+
+.presa-card__display {
+  background: var(--color-display-bg);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.9rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+}
+.presa-card__valore {
+  color: var(--color-display-fg);
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+.presa-card__unita {
+  color: var(--color-display-fg);
+  opacity: 0.7;
+  font-size: 0.85rem;
+}
+
+.presa-card__soglia {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-ink-soft);
+}
+
+.presa-card__azioni {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.presa-card__bottone--on:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.presa-card__bottone--off:not(:disabled) {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.presa-card__stato-invio {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-ink-soft);
+}
+
+.presa-card__errore {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-danger);
+}

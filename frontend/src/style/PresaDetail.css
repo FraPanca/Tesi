@@ -1,0 +1,122 @@
+.presa-detail {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.presa-detail__stato {
+  max-width: 780px;
+  margin: 3rem auto;
+  text-align: center;
+  color: var(--color-ink-soft);
+}
+
+.presa-detail__indietro {
+  color: var(--color-ink-soft);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.presa-detail__indietro:hover {
+  text-decoration: underline;
+}
+
+.presa-detail__intestazione {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.presa-detail__titolo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.presa-detail__titolo h1 {
+  font-size: 1.5rem;
+}
+
+.presa-detail__pallino {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+.presa-detail__pallino.is-on {
+  background: var(--color-accent);
+}
+
+.presa-detail__azioni-intestazione {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.presa-detail__meta {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+}
+
+.presa-detail__comando {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.presa-detail__bottone-on:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.presa-detail__bottone-off:not(:disabled) {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.presa-detail__nota {
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+}
+
+.presa-detail__errore {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-danger);
+}
+
+.presa-detail__form-modifica {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.presa-detail__form-modifica label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--color-ink-soft);
+}
+.presa-detail__form-modifica input {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  color: var(--color-ink);
+}
+.presa-detail__form-azioni {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.presa-detail__periodo {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}

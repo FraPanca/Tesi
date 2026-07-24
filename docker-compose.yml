@@ -27,8 +27,8 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
     volumes:
-      # Bind mount esplicito sull'HDD esterno, non un volume Docker nominato: un volume nominato finirebbe 
-      # comunque sotto la data-root di Docker (di norma sulla SD). Le directory sono già state create e 
+      # Bind mount esplicito sull'HDD esterno, non un volume Docker nominato: un volume nominato finirebbe
+      # comunque sotto la data-root di Docker (di norma sulla SD). Le directory sono già state create e
       # assegnate a UID 999 in fase di setup del disco.
       - /mnt/wd1tb/iot-energy/mongodb:/data/db
     healthcheck:
@@ -78,6 +78,15 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
 
 networks:
   default:

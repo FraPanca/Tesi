@@ -1,0 +1,66 @@
+.cost-estimator h3,
+.add-presa-form h3 {
+  margin-bottom: 0.75rem;
+}
+
+.cost-estimator__energia,
+.cost-estimator__totale {
+  margin: 0.35rem 0;
+}
+.cost-estimator__totale strong {
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+}
+.cost-estimator__campo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-ink-soft);
+  margin: 0.75rem 0;
+}
+.cost-estimator__campo input {
+  width: 6rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  text-align: right;
+}
+.cost-estimator__nota {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--color-ink-soft);
+}
+
+.add-presa-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.add-presa-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--color-ink-soft);
+}
+.add-presa-form input {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  color: var(--color-ink);
+}
+.add-presa-form__errore {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-danger);
+}
+.add-presa-form__azioni {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

@@ -1,0 +1,40 @@
+.consumption-chart__tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.consumption-chart__tab {
+  border: none;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--color-ink-soft);
+  padding: 0.35rem 0.75rem;
+  border-radius: calc(var(--radius-md) - 4px);
+  cursor: pointer;
+}
+
+.consumption-chart__tab.is-active {
+  background: var(--color-surface);
+  color: var(--tab-colore, var(--color-ink));
+  box-shadow: var(--shadow-card);
+}
+
+.consumption-chart__area {
+  position: relative;
+  height: 280px;
+}
+
+.consumption-chart__stato {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-ink-soft);
+  font-size: 0.9rem;
+}
