@@ -49,7 +49,10 @@ async function start() {
   });
 }
 
-start();
+// Protegge l'avvio reale da chi importa semplicemente questo modulo: esempio i test di integrazione con supertest.
+if (require.main === module) {
+  start();
+}
 
 
 module.exports = { app, io };
