@@ -193,9 +193,12 @@ Gestione tramite lo script wrapper:
 ./manage.sh status
 ```
 
+### Testing
+
+Suite di test automatizzata su backend (Jest, 62 test) e frontend (Vitest, 48 test) a copertura funzionale dei percorsi critici. Gateway e firmware ESP32 restano verificati solo manualmente (`mosquitto_pub`/`sub`, CLI `kasa`, Serial Monitor). Dettagli nei README di [`backend/`](backend/README.md) e [`frontend/`](frontend/README.md).
+
 ### Limitazioni note
 
-- Nessuna suite di test automatizzata su backend e frontend — verifica finora manuale (`curl`, `mosquitto_pub`/`sub`, `redis-cli`, `mongosh`).
 - Comunicazione MQTT degli ESP32 con QoS 0 reale (limite della libreria `PubSubClient`), compensato lato firmware con una coda di ritentativo solo in RAM — non sopravvive a una perdita di alimentazione della scheda.
 - Load balancer statico su 2 worker fissi, nessuna registrazione dinamica di nuovi elaboratori.
 - Backend esposto su HTTP semplice (non HTTPS): scelta motivata dal fatto che il traffico remoto passa comunque da Tailscale, cifrato a livello WireGuard.
@@ -393,9 +396,12 @@ Managed through the wrapper script:
 ./manage.sh status
 ```
 
+### Testing
+
+Automated test suite on the backend (Jest, 62 tests) and frontend (Vitest, 48 tests) covering the critical paths functionally. The gateway and ESP32 firmware are still only verified manually (`mosquitto_pub`/`sub`, the `kasa` CLI, Serial Monitor). Details in the [`backend/`](backend/README.md) and [`frontend/`](frontend/README.md) READMEs.
+
 ### Known limitations
 
-- No automated test suite for backend or frontend — verification so far has been manual (`curl`, `mosquitto_pub`/`sub`, `redis-cli`, `mongosh`).
 - ESP32 MQTT communication uses real QoS 0 (a limitation of the `PubSubClient` library), compensated on the firmware side with a RAM-only retry queue — it does not survive a power loss on the board.
 - Static load balancer with 2 fixed workers, no dynamic registration of additional processors.
 - The backend is exposed over plain HTTP (not HTTPS): this choice is justified by the fact that remote traffic already goes through Tailscale, encrypted at the WireGuard layer.

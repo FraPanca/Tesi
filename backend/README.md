@@ -31,6 +31,8 @@ jsonwebtoken  ^9.0.3
 bcryptjs      ^3.0.3
 dotenv        ^16.4.0
 nodemon       ^3.0.0    (solo dev)
+jest          ^30.4.2   (solo dev, test)
+supertest     ^7.2.2    (solo dev, test di integrazione HTTP)
 ```
 
 CommonJS puro, nessun transpiler/bundler.
@@ -98,36 +100,133 @@ backend/
 ├── .env.example
 ├── Dockerfile
 ├── .dockerignore
-└── src/
-    ├── app.js
-    │   # entry point: Express + Socket.IO, mount rotte/middleware
-    ├── config/
-    │   # connessione MongoDB (Mongoose) e Redis
-    ├── models/
-    │   # Presa, ConsumoOttimizzato (time-series), Previsione, Log (TTL 30gg)
-    ├── repositories/
-    │   # accesso dati puro (Mongoose + Redis), nessuna logica di business
-    ├── services/
-    │   # logica di business: presa, consumo (+cache), comando (+retry MQTT),
-    │   # admin (flush/healthcheck), auth (JWT), log
-    ├── controllers/
-    │   # orchestrazione req/res
-    ├── routes/
-    │   # endpoint Express (auth, logs, admin, presa, consumo)
-    ├── middleware/
-    │   # errorHandler centralizzato, auth (verifyToken)
-    ├── mqtt/
-    │   ├── client.js
-    │   │   # client MQTT unico: subscribe optimized/healthcheck-response,
-    │   │   # publish comandi/flush/healthcheck, retry con backoff
-    ├── websocket/
-    │   # setup Socket.IO, notifica push per presa sottoscritta
-    └── utils/
-        ├── retry.js
-        │   # retry generico con backoff esponenziale
+├── src/
+│   ├── app.js
+│   │   # entry point: Express + Socket.IO, mount rotte/middleware;
+│   │   # avvio reale (Mongo/Redis/MQTT/listen) protetto da `if (require.main === module)`,
+│   │   # per poter importare l'app nei test senza connessioni reali
+│   ├── config/
+│   │   ├── db.js
+│   │   │   # connessione MongoDB (Mongoose)
+│   │   └── redis.js
+│   │       # connessione Redis
+│   ├── controllers/
+│   │   ├── adminController.js
+│   │   ├── authController.js
+│   │   ├── comandoController.js
+│   │   ├── consumoController.js
+│   │   ├── logController.js
+│   │   └── presaController.js
+│   ├── middleware/
+│   │   ├── auth.js
+│   │   │   # verifyToken
+│   │   └── errorHandler.js
+│   │       # gestore errori centralizzato
+│   ├── models/
+│   │   ├── ConsumoOttimizzato.js
+│   │   │   # collezione time-series
+│   │   ├── Log.js
+│   │   │   # collezione "logs", TTL index 30 giorni
+│   │   ├── Presa.js
+│   │   └── Previsione.js
+│   │       # pronto, non ancora esposto
+│   ├── mqtt/
+│   │   └── client.js
+│   │       # client MQTT unico: subscribe optimized/healthcheck-response,
+│   │       # publish comandi/flush/healthcheck, retry con backoff
+│   ├── repositories/
+│   │   ├── consumoRepository.js
+│   │   ├── logRepository.js
+│   │   └── presaRepository.js
+│   ├── routes/
+│   │   ├── adminRoutes.js
+│   │   ├── authRoutes.js
+│   │   │   # POST /api/auth/login
+│   │   ├── consumoRoutes.js
+│   │   ├── logRoutes.js
+│   │   │   # GET /api/logs
+│   │   └── presaRoutes.js
+│   ├── services/
+│   │   ├── adminService.js
+│   │   │   # flush/healthcheck
+│   │   ├── authService.js
+│   │   │   # login, firma JWT
+│   │   ├── comandoService.js
+│   │   │   # invio comandi on/off, con retry MQTT
+│   │   ├── consumoService.js
+│   │   │   # logica consumi + cache Redis
+│   │   ├── logService.js
+│   │   │   # validazione filtri di GET /api/logs
+│   │   └── presaService.js
+│   ├── utils/
+│   │   └── retry.js
+│   │       # retry generico con backoff esponenziale
+│   └── websocket/
+│       └── index.js
+│           # setup Socket.IO, notifica push per presa sottoscritta
+└── tests/
+    ├── unit/
+    │   ├── utils/
+    │   │   └── retry.test.js
+    │   ├── mqtt/
+    │   │   └── client.test.js
+    │   ├── middleware/
+    │   │   └── auth.test.js
+    │   └── services/
+    │       ├── consumoService.test.js
+    │       ├── comandoService.test.js
+    │       ├── presaService.test.js
+    │       ├── authService.test.js
+    │       └── logService.test.js
+    └── integration/
+        └── app.test.js
 ```
 
-### Come testarlo in isolamento
+### Come testarlo
+
+#### Suite di test automatizzata
+
+**Framework:** Jest, più `supertest` per un singolo test di integrazione HTTP.
+
+**Setup** (se non già fatto):
+```bash
+cd backend
+npm install --save-dev jest supertest
+```
+e aggiungere in `package.json`:
+```json
+"scripts": {
+  "test": "jest",
+  "test:watch": "jest --watch"
+}
+```
+
+**Comandi:**
+```bash
+npm test                    # tutta la suite
+npx jest <path-al-file>     # un singolo file
+npm run test:watch          # riesecuzione automatica
+```
+
+Non serve nessun `.env` reale né MongoDB/Redis/MQTT attivi: tutto lo strato esterno è mockato (repository Mongo/Redis, client MQTT, modello `Log`), lasciando reale tutta la logica applicativa — il test di integrazione fa lo stesso a livello di intera applicazione HTTP. Le uniche variabili d'ambiente necessarie (`JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`) sono impostate direttamente nei file di test che ne hanno bisogno.
+
+**Risultato attuale:** 9 suite, 62 test, tutti verdi.
+
+| File | N. test | Cosa verifica |
+|---|---|---|
+| `utils/retry.test.js` | 6 | Backoff esponenziale, esaurimento tentativi, valori di default |
+| `mqtt/client.test.js` | 7 | Mapping payload ESP32→backend, sottoscrizione ai topic corretti, gestione errori/log su fallimento, pubblicazione comandi |
+| `services/consumoService.test.js` | 10 | Salvataggio dato + notifica websocket, logica di spegnimento automatico per soglia potenza, lettura cache |
+| `services/comandoService.test.js` | 4 | Validazione azione on/off, presa non trovata, pubblicazione MQTT + aggiornamento ottimistico stato |
+| `services/presaService.test.js` | 10 | Vincoli su presaId/IP duplicati, whitelist campi in update, deregistrazione dispositivo alla rimozione |
+| `services/authService.test.js` | 6 | Login con JWT reale, credenziali errate, campi mancanti, logging |
+| `middleware/auth.test.js` | 5 | Token valido/mancante/malformato/scaduto/firmato con secret errato |
+| `services/logService.test.js` | 5 | Validazione filtri di ricerca log |
+| `integration/app.test.js` | 9 | Routing reale + controller + service + gestore errori + middleware auth, end-to-end via supertest |
+
+Copertura funzionale dei percorsi critici e dei contratti tra componenti, non esaustiva — coerente con la priorità di progetto data al sistema end-to-end e al modulo Prophet; il testing resta a un livello funzionale.
+
+#### Verifica manuale
 
 Non richiede gateway/ESP32 reali per rispondere a REST/auth (i topic MQTT possono essere simulati con `mosquitto_pub`), ma richiede MongoDB/Redis/Mosquitto raggiungibili.
 
@@ -150,9 +249,7 @@ curl -X POST http://localhost:3000/api/admin/flush -H "Authorization: Bearer <to
 curl "http://localhost:3000/api/logs?livello=error&limite=20" -H "Authorization: Bearer <token>"
 ```
 
-**Retry con backoff** (verifica manuale): fermare il container `mosquitto` e chiamare `POST /api/admin/flush`; nei log del backend compaiono i tentativi con attesa crescente, e dopo il quinto fallimento un documento in `logs` con `evento: "mqtt.retry_esaurito"`.
-
-Nessuna test suite automatizzata — verifica finora manuale (`curl`, `mosquitto_pub`/`sub`, `redis-cli`, `mongosh`).
+**Retry con backoff:** fermare il container `mosquitto` e chiamare `POST /api/admin/flush`; nei log del backend compaiono i tentativi con attesa crescente, e dopo il quinto fallimento un documento in `logs` con `evento: "mqtt.retry_esaurito"`.
 
 ### Note e limiti noti
 
@@ -192,6 +289,8 @@ jsonwebtoken  ^9.0.3
 bcryptjs      ^3.0.3
 dotenv        ^16.4.0
 nodemon       ^3.0.0    (dev only)
+jest          ^30.4.2   (dev only, testing)
+supertest     ^7.2.2    (dev only, HTTP integration test)
 ```
 
 Plain CommonJS, no transpiler/bundler.
@@ -259,36 +358,133 @@ backend/
 ├── .env.example
 ├── Dockerfile
 ├── .dockerignore
-└── src/
-    ├── app.js
-    │   # entry point: Express + Socket.IO, mounts routes/middleware
-    ├── config/
-    │   # MongoDB (Mongoose) and Redis connection
-    ├── models/
-    │   # Presa, ConsumoOttimizzato (time-series), Previsione, Log (30-day TTL)
-    ├── repositories/
-    │   # pure data access (Mongoose + Redis), no business logic
-    ├── services/
-    │   # business logic: plug, consumption (+cache), command (+MQTT retry),
-    │   # admin (flush/healthcheck), auth (JWT), logs
-    ├── controllers/
-    │   # req/res orchestration
-    ├── routes/
-    │   # Express endpoints (auth, logs, admin, plug, consumption)
-    ├── middleware/
-    │   # centralized error handler, auth (verifyToken)
-    ├── mqtt/
-    │   ├── client.js
-    │   │   # single MQTT client: subscribes to optimized/healthcheck-response,
-    │   │   # publishes commands/flush/healthcheck, retry with backoff
-    ├── websocket/
-    │   # Socket.IO setup, push notifications per subscribed plug
-    └── utils/
-        ├── retry.js
-        │   # generic exponential-backoff retry
+├── src/
+│   ├── app.js
+│   │   # entry point: Express + Socket.IO, mounts routes/middleware;
+│   │   # real startup (Mongo/Redis/MQTT/listen) guarded by `if (require.main === module)`,
+│   │   # so the app can be imported in tests without opening real connections
+│   ├── config/
+│   │   ├── db.js
+│   │   │   # MongoDB (Mongoose) connection
+│   │   └── redis.js
+│   │       # Redis connection
+│   ├── controllers/
+│   │   ├── adminController.js
+│   │   ├── authController.js
+│   │   ├── comandoController.js
+│   │   ├── consumoController.js
+│   │   ├── logController.js
+│   │   └── presaController.js
+│   ├── middleware/
+│   │   ├── auth.js
+│   │   │   # verifyToken
+│   │   └── errorHandler.js
+│   │       # centralized error handler
+│   ├── models/
+│   │   ├── ConsumoOttimizzato.js
+│   │   │   # time-series collection
+│   │   ├── Log.js
+│   │   │   # "logs" collection, 30-day TTL index
+│   │   ├── Presa.js
+│   │   └── Previsione.js
+│   │       # ready, not exposed yet
+│   ├── mqtt/
+│   │   └── client.js
+│   │       # single MQTT client: subscribes to optimized/healthcheck-response,
+│   │       # publishes commands/flush/healthcheck, retry with backoff
+│   ├── repositories/
+│   │   ├── consumoRepository.js
+│   │   ├── logRepository.js
+│   │   └── presaRepository.js
+│   ├── routes/
+│   │   ├── adminRoutes.js
+│   │   ├── authRoutes.js
+│   │   │   # POST /api/auth/login
+│   │   ├── consumoRoutes.js
+│   │   ├── logRoutes.js
+│   │   │   # GET /api/logs
+│   │   └── presaRoutes.js
+│   ├── services/
+│   │   ├── adminService.js
+│   │   │   # flush/healthcheck
+│   │   ├── authService.js
+│   │   │   # login, JWT signing
+│   │   ├── comandoService.js
+│   │   │   # sends on/off commands, with MQTT retry
+│   │   ├── consumoService.js
+│   │   │   # consumption logic + Redis cache
+│   │   ├── logService.js
+│   │   │   # validates GET /api/logs filters
+│   │   └── presaService.js
+│   ├── utils/
+│   │   └── retry.js
+│   │       # generic exponential-backoff retry
+│   └── websocket/
+│       └── index.js
+│           # Socket.IO setup, push notifications per subscribed plug
+└── tests/
+    ├── unit/
+    │   ├── utils/
+    │   │   └── retry.test.js
+    │   ├── mqtt/
+    │   │   └── client.test.js
+    │   ├── middleware/
+    │   │   └── auth.test.js
+    │   └── services/
+    │       ├── consumoService.test.js
+    │       ├── comandoService.test.js
+    │       ├── presaService.test.js
+    │       ├── authService.test.js
+    │       └── logService.test.js
+    └── integration/
+        └── app.test.js
 ```
 
-### How to test it in isolation
+### How to test it
+
+#### Automated test suite
+
+**Framework:** Jest, plus `supertest` for a single HTTP integration test.
+
+**Setup** (if not already done):
+```bash
+cd backend
+npm install --save-dev jest supertest
+```
+and add to `package.json`:
+```json
+"scripts": {
+  "test": "jest",
+  "test:watch": "jest --watch"
+}
+```
+
+**Commands:**
+```bash
+npm test                    # whole suite
+npx jest <path-to-file>     # a single file
+npm run test:watch          # auto re-run
+```
+
+No real `.env` or a running MongoDB/Redis/MQTT is needed: the entire external layer is mocked (Mongo/Redis repositories, MQTT client, the `Log` model), leaving all the application logic real — the integration test does the same at the whole-HTTP-application level. The only environment variables needed (`JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`) are set directly in the test files that need them.
+
+**Current result:** 9 suites, 62 tests, all passing.
+
+| File | # tests | What it checks |
+|---|---|---|
+| `utils/retry.test.js` | 6 | Exponential backoff, retry exhaustion, default values |
+| `mqtt/client.test.js` | 7 | ESP32→backend payload mapping, subscribing to the right topics, error/log handling on failure, command publishing |
+| `services/consumoService.test.js` | 10 | Saving a reading + websocket notification, power-threshold auto-shutoff logic, cache reads |
+| `services/comandoService.test.js` | 4 | On/off action validation, plug not found, MQTT publish + optimistic state update |
+| `services/presaService.test.js` | 10 | Constraints on duplicate presaId/IP, field whitelist on update, device deregistration on removal |
+| `services/authService.test.js` | 6 | Login with a real JWT, wrong credentials, missing fields, logging |
+| `middleware/auth.test.js` | 5 | Valid/missing/malformed/expired token, token signed with the wrong secret |
+| `services/logService.test.js` | 5 | Log search filter validation |
+| `integration/app.test.js` | 9 | Real routing + controller + service + error handler + auth middleware, end-to-end via supertest |
+
+Functional coverage of the critical paths and the contracts between components, not exhaustive — consistent with the project's priority given to the end-to-end system and the Prophet module; testing stays at a functional level.
+
+#### Manual verification
 
 Does not need a real gateway/ESP32 to respond to REST/auth calls (MQTT topics can be simulated with `mosquitto_pub`), but does require reachable MongoDB/Redis/Mosquitto.
 
@@ -311,9 +507,7 @@ curl -X POST http://localhost:3000/api/admin/flush -H "Authorization: Bearer <to
 curl "http://localhost:3000/api/logs?livello=error&limite=20" -H "Authorization: Bearer <token>"
 ```
 
-**Retry with backoff** (manual check): stop the `mosquitto` container and call `POST /api/admin/flush`; the backend logs show increasing-wait retry attempts, and after the fifth failure a document is written to `logs` with `evento: "mqtt.retry_esaurito"`.
-
-No automated test suite — verification so far has been manual (`curl`, `mosquitto_pub`/`sub`, `redis-cli`, `mongosh`).
+**Retry with backoff:** stop the `mosquitto` container and call `POST /api/admin/flush`; the backend logs show increasing-wait retry attempts, and after the fifth failure a document is written to `logs` with `evento: "mqtt.retry_esaurito"`.
 
 ### Notes and known limitations
 

@@ -28,6 +28,8 @@ Consuma le API REST/WebSocket esposte dal [`backend`](../backend/README.md) per 
 
 Linter: **Oxlint** (non ESLint), `.oxlintrc.json` in radice, nessuna configurazione aggiuntiva necessaria.
 
+Per il testing (dev dependency, vedi sezione dedicata più sotto): `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`.
+
 ### Setup
 
 ```bash
@@ -62,58 +64,117 @@ frontend/
 │   # serve la SPA + reverse proxy verso backend:3000 per /api e /socket.io
 ├── vite.config.js
 │   # proxy dev verso il backend (REST + WebSocket, ws:true)
+├── vitest.config.js
+│   # configurazione dei test (Vitest), file separato da vite.config.js
 ├── package.json
 ├── index.html
-└── src/
-    ├── main.jsx
-    ├── App.jsx
-    ├── style/
-    │   ├── index.css / Dashboard.css / ConsumptionChart.css / PresaCard.css
-    │   ├── DashboardWidgets.css / Login.css / AdminLogs.css / PresaDetail.css
-    ├── context/
-    │   ├── AuthContext.jsx
-    │   │   # unico livello di autorizzazione: token valido = admin
-    │   ├── WebSocketContext.jsx
-    │   │   # un solo socket per tutta l'app
-    ├── services/
-    │   └── api/
-    │       ├── client.js
-    │       │   # header, formato errore, gestione 401
-    │       ├── auth.js
-    │       ├── prese.js
-    │       ├── consumi.js
-    │       ├── admin.js
-    │       ├── logs.js
-    ├── hooks/
-    │   ├── usePrese.js
-    │   │   # CRUD + comando on/off, fonte di verità della lista prese
-    │   ├── useReadingsHistory.js
-    │   ├── useRecentReadings.js
-    │   ├── useLogs.js
-    │   ├── useAdmin.js
-    ├── pages/
-    │   ├── Dashboard.jsx
-    │   ├── PresaDetail.jsx
-    │   ├── Login.jsx
-    │   ├── AdminLogs.jsx
-    └── components/
-        ├── ConsumptionChart.jsx
-        ├── PresaCard.jsx
-        ├── CostEstimator.jsx
-        ├── AddPresaForm.jsx
-        ├── RequireAuth.jsx
-        ├── LogTable.jsx
-        ├── AdminDiagnostics.jsx
+├── src/
+│   ├── main.jsx
+│   ├── App.jsx
+│   ├── style/
+│   │   ├── index.css / Dashboard.css / ConsumptionChart.css / PresaCard.css
+│   │   ├── DashboardWidgets.css / Login.css / AdminLogs.css / PresaDetail.css
+│   ├── context/
+│   │   ├── AuthContext.jsx
+│   │   │   # unico livello di autorizzazione: token valido = admin
+│   │   ├── WebSocketContext.jsx
+│   │   │   # un solo socket per tutta l'app
+│   ├── services/
+│   │   └── api/
+│   │       ├── client.js
+│   │       │   # header, formato errore, gestione 401
+│   │       ├── auth.js
+│   │       ├── prese.js
+│   │       ├── consumi.js
+│   │       ├── admin.js
+│   │       ├── logs.js
+│   ├── hooks/
+│   │   ├── usePrese.js
+│   │   │   # CRUD + comando on/off, fonte di verità della lista prese
+│   │   ├── useReadingsHistory.js
+│   │   ├── useRecentReadings.js
+│   │   ├── useLogs.js
+│   │   ├── useAdmin.js
+│   ├── pages/
+│   │   ├── Dashboard.jsx
+│   │   ├── PresaDetail.jsx
+│   │   ├── Login.jsx
+│   │   ├── AdminLogs.jsx
+│   └── components/
+│       ├── ConsumptionChart.jsx
+│       ├── PresaCard.jsx
+│       ├── CostEstimator.jsx
+│       ├── AddPresaForm.jsx
+│       ├── RequireAuth.jsx
+│       ├── LogTable.jsx
+│       ├── AdminDiagnostics.jsx
+└── tests/
+    ├── setup.js
+    │   # estende expect con i matcher jest-dom, pulisce il DOM tra i test
+    └── unit/
+        ├── services/
+        │   └── client.test.js
+        ├── context/
+        │   └── AuthContext.test.js
+        ├── components/
+        │   ├── RequireAuth.test.jsx
+        │   ├── PresaCard.test.jsx
+        │   ├── AddPresaForm.test.jsx
+        │   └── CostEstimator.test.jsx
+        └── hooks/
+            └── usePrese.test.js
 ```
 
-### Come si avvia/testa in isolamento
+### Come si avvia/testa
+
+#### Suite di test automatizzata
+
+**Framework:** Vitest (non Jest — scelto per l'integrazione nativa con la configurazione Vite già presente, meno configurazione necessaria rispetto a Jest su un progetto Vite/ESM), con React Testing Library.
+
+**Setup** (se non già fatto):
+```bash
+cd frontend
+npm install --save-dev vitest jsdom @testing-library/react @testing-library/jest-dom @testing-library/user-event
+```
+e aggiungere in `package.json`:
+```json
+"scripts": {
+  "test": "vitest run",
+  "test:watch": "vitest"
+}
+```
+
+File di configurazione (nuovi, non modificano il `vite.config.js` esistente): `vitest.config.js` e `tests/setup.js` (estende `expect` con i matcher `jest-dom`, pulisce il DOM tra i test).
+
+**Comandi:**
+```bash
+npm test                       # tutta la suite
+npx vitest run <path-al-file>  # un singolo file
+npm run test:watch             # riesecuzione automatica
+```
+
+**Risultato attuale:** 7 suite, 48 test, tutti verdi.
+
+| File | N. test | Cosa verifica |
+|---|---|---|
+| `services/client.test.js` | 10 | Contratto di `apiFetch`: headers, gestione 204, formato errori, logout automatico solo sui 401 autenticati |
+| `context/AuthContext.test.js` | 7 | Persistenza sessione in localStorage, login/logout, wiring dell'handler 401→logout |
+| `components/RequireAuth.test.jsx` | 2 | Redirect a `/login` se non autenticato |
+| `components/PresaCard.test.jsx` | 9 | Display potenza/soglia, stati disabled ON/OFF, invio comando (attesa/errore), rimozione |
+| `components/AddPresaForm.test.jsx` | 6 | Trim campi, conversione soglia potenza, errore, chiusura solo su successo |
+| `components/CostEstimator.test.jsx` | 7 | Stima energia (integrazione trapezoidale potenza→kWh), formato tariffa con virgola |
+| `hooks/usePrese.test.js` | 7 | Caricamento iniziale, CRUD, aggiornamento ottimistico dopo un comando |
+
+Esplicitamente esclusi dalla suite: `ConsumptionChart` (integrazione Chart.js/canvas — basso valore/alto attrito per test automatizzati) e `WebSocketContext` (richiederebbe mock approfonditi del protocollo Socket.IO).
+
+Copertura funzionale, non esaustiva — coerente con la priorità di progetto data al sistema end-to-end e al modulo Prophet.
+
+#### Verifica manuale in isolamento
 
 Non ha una modalità mock: consuma REST/WebSocket reali del backend.
 
 - **Verifica strutturale senza backend**: `npm run build` compila tutto il codice e cattura errori di sintassi/import/JSX, senza richiedere il backend attivo.
 - **Verifica funzionale**: richiede il backend (e a cascata Mongo/Redis/Mosquitto) attivo — `docker compose up backend mongodb redis mosquitto` dalla root, poi `npm run dev`.
-
-Nessun test automatico implementato.
 
 ### Note e limiti noti
 
@@ -147,6 +208,8 @@ Consumes the REST/WebSocket API exposed by the [`backend`](../backend/README.md)
 | @vitejs/plugin-react | 6.0.4 | JSX/Fast Refresh plugin |
 
 Linter: **Oxlint** (not ESLint), `.oxlintrc.json` at the root, no extra configuration needed.
+
+For testing (dev dependency, see the dedicated section below): `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`.
 
 ### Setup
 
@@ -182,58 +245,117 @@ frontend/
 │   # serves the SPA + reverse-proxies to backend:3000 for /api and /socket.io
 ├── vite.config.js
 │   # dev proxy to the backend (REST + WebSocket, ws:true)
+├── vitest.config.js
+│   # test configuration (Vitest), separate file from vite.config.js
 ├── package.json
 ├── index.html
-└── src/
-    ├── main.jsx
-    ├── App.jsx
-    ├── style/
-    │   ├── index.css / Dashboard.css / ConsumptionChart.css / PresaCard.css
-    │   ├── DashboardWidgets.css / Login.css / AdminLogs.css / PresaDetail.css
-    ├── context/
-    │   ├── AuthContext.jsx
-    │   │   # single authorization level: valid token = admin
-    │   ├── WebSocketContext.jsx
-    │   │   # one socket for the whole app
-    ├── services/
-    │   └── api/
-    │       ├── client.js
-    │       │   # headers, error format, 401 handling
-    │       ├── auth.js
-    │       ├── prese.js
-    │       ├── consumi.js
-    │       ├── admin.js
-    │       ├── logs.js
-    ├── hooks/
-    │   ├── usePrese.js
-    │   │   # CRUD + on/off command, single source of truth for the plug list
-    │   ├── useReadingsHistory.js
-    │   ├── useRecentReadings.js
-    │   ├── useLogs.js
-    │   ├── useAdmin.js
-    ├── pages/
-    │   ├── Dashboard.jsx
-    │   ├── PresaDetail.jsx
-    │   ├── Login.jsx
-    │   ├── AdminLogs.jsx
-    └── components/
-        ├── ConsumptionChart.jsx
-        ├── PresaCard.jsx
-        ├── CostEstimator.jsx
-        ├── AddPresaForm.jsx
-        ├── RequireAuth.jsx
-        ├── LogTable.jsx
-        ├── AdminDiagnostics.jsx
+├── src/
+│   ├── main.jsx
+│   ├── App.jsx
+│   ├── style/
+│   │   ├── index.css / Dashboard.css / ConsumptionChart.css / PresaCard.css
+│   │   ├── DashboardWidgets.css / Login.css / AdminLogs.css / PresaDetail.css
+│   ├── context/
+│   │   ├── AuthContext.jsx
+│   │   │   # single authorization level: valid token = admin
+│   │   ├── WebSocketContext.jsx
+│   │   │   # one socket for the whole app
+│   ├── services/
+│   │   └── api/
+│   │       ├── client.js
+│   │       │   # headers, error format, 401 handling
+│   │       ├── auth.js
+│   │       ├── prese.js
+│   │       ├── consumi.js
+│   │       ├── admin.js
+│   │       ├── logs.js
+│   ├── hooks/
+│   │   ├── usePrese.js
+│   │   │   # CRUD + on/off command, single source of truth for the plug list
+│   │   ├── useReadingsHistory.js
+│   │   ├── useRecentReadings.js
+│   │   ├── useLogs.js
+│   │   ├── useAdmin.js
+│   ├── pages/
+│   │   ├── Dashboard.jsx
+│   │   ├── PresaDetail.jsx
+│   │   ├── Login.jsx
+│   │   ├── AdminLogs.jsx
+│   └── components/
+│       ├── ConsumptionChart.jsx
+│       ├── PresaCard.jsx
+│       ├── CostEstimator.jsx
+│       ├── AddPresaForm.jsx
+│       ├── RequireAuth.jsx
+│       ├── LogTable.jsx
+│       ├── AdminDiagnostics.jsx
+└── tests/
+    ├── setup.js
+    │   # extends expect with the jest-dom matchers, cleans up the DOM between tests
+    └── unit/
+        ├── services/
+        │   └── client.test.js
+        ├── context/
+        │   └── AuthContext.test.js
+        ├── components/
+        │   ├── RequireAuth.test.jsx
+        │   ├── PresaCard.test.jsx
+        │   ├── AddPresaForm.test.jsx
+        │   └── CostEstimator.test.jsx
+        └── hooks/
+            └── usePrese.test.js
 ```
 
-### How to start/test it in isolation
+### How to start/test it
+
+#### Automated test suite
+
+**Framework:** Vitest (not Jest — chosen for its native integration with the existing Vite configuration, requiring less setup than Jest on a Vite/ESM project), with React Testing Library.
+
+**Setup** (if not already done):
+```bash
+cd frontend
+npm install --save-dev vitest jsdom @testing-library/react @testing-library/jest-dom @testing-library/user-event
+```
+and add to `package.json`:
+```json
+"scripts": {
+  "test": "vitest run",
+  "test:watch": "vitest"
+}
+```
+
+Configuration files (new, do not modify the existing `vite.config.js`): `vitest.config.js` and `tests/setup.js` (extends `expect` with the `jest-dom` matchers, cleans up the DOM between tests).
+
+**Commands:**
+```bash
+npm test                       # whole suite
+npx vitest run <path-to-file>  # a single file
+npm run test:watch             # auto re-run
+```
+
+**Current result:** 7 suites, 48 tests, all passing.
+
+| File | # tests | What it checks |
+|---|---|---|
+| `services/client.test.js` | 10 | `apiFetch` contract: headers, 204 handling, error format, automatic logout only on authenticated 401s |
+| `context/AuthContext.test.js` | 7 | Session persistence in localStorage, login/logout, wiring of the 401→logout handler |
+| `components/RequireAuth.test.jsx` | 2 | Redirect to `/login` when not authenticated |
+| `components/PresaCard.test.jsx` | 9 | Power/threshold display, ON/OFF disabled states, sending a command (pending/error), removal |
+| `components/AddPresaForm.test.jsx` | 6 | Field trimming, power threshold conversion, error handling, closes only on success |
+| `components/CostEstimator.test.jsx` | 7 | Energy estimate (trapezoidal power→kWh integration), comma-formatted tariff |
+| `hooks/usePrese.test.js` | 7 | Initial load, CRUD, optimistic update after a command |
+
+Explicitly excluded from the suite: `ConsumptionChart` (Chart.js/canvas integration — low value/high friction for automated testing) and `WebSocketContext` (would require deep mocking of the Socket.IO protocol).
+
+Functional coverage, not exhaustive — consistent with the project's priority given to the end-to-end system and the Prophet module.
+
+#### Manual verification in isolation
 
 There is no mock mode: it consumes the backend's real REST/WebSocket API.
 
 - **Structural check without a backend**: `npm run build` compiles all the source code and catches syntax/import/JSX errors, without requiring the backend to be running.
 - **Functional check**: requires the backend (and, transitively, Mongo/Redis/Mosquitto) running — `docker compose up backend mongodb redis mosquitto` from the root, then `npm run dev`.
-
-No automated tests implemented.
 
 ### Notes and known limitations
 
