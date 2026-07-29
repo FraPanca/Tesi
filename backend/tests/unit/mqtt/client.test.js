@@ -13,6 +13,11 @@ const { retryConBackoff } = require('../../../src/utils/retry');
 const Log = require('../../../src/models/Log');
 const { connettiMqtt, inviaComando, mqttEvents } = require('../../../src/mqtt/client');
 
+async function flush(volte = 1) {
+  for (let i = 0; i < volte; i += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
 
 describe('mqtt/client', () => {
   let fakeClient;
@@ -35,8 +40,17 @@ describe('mqtt/client', () => {
     mqttEvents.removeAllListeners();
   });
 
-  function payloadEsp32({ power_w = 42.5, voltage_v = 230.1, current_a = 0.18, timestamp_end = 1_753_500_000 } = {}) {
-    return Buffer.from(JSON.stringify({ power_w, voltage_v, current_a, timestamp_end }));
+  function payloadEsp32({
+    power_w = 42.5,
+    voltage_v = 230.1,
+    current_a = 0.18,
+    timestamp_end = 1_753_500_000,
+    timestamp_start = 1_753_499_970,
+    valore_singolo = false,
+  } = {}) {
+    return Buffer.from(
+      JSON.stringify({ power_w, voltage_v, current_a, timestamp_end, timestamp_start, valore_singolo })
+    );
   }
 
   test('si sottoscrive a home/+/optimized e healthcheck/response alla connessione', () => {
@@ -48,11 +62,20 @@ describe('mqtt/client', () => {
     );
   });
 
-  test('un messaggio su home/<presaId>/optimized viene mappato e passato al service con il presaId estratto dal topic', async () => {
-    fakeClient.emit('message', 'home/presa2/optimized', payloadEsp32({ power_w: 55, voltage_v: 228, current_a: 0.24, timestamp_end: 1_753_500_000 }));
-
-    // Il gestore del messaggio è async (contiene await): si aspetta il flush della coda di microtask.
-    await new Promise((resolve) => setImmediate(resolve));
+  test('un messaggio su home/<presaId>/optimized viene mappato (incluso valoreSingolo/timestampInizio) e passato al service completo di ogni campo', async () => {
+    fakeClient.emit(
+      'message',
+      'home/presa2/optimized',
+      payloadEsp32({
+        power_w: 55,
+        voltage_v: 228,
+        current_a: 0.24,
+        timestamp_end: 1_753_500_000,
+        timestamp_start: 1_753_499_970,
+        valore_singolo: true,
+      })
+    );
+    await flush();
 
     expect(consumoService.salvaDatoOttimizzato).toHaveBeenCalledWith({
       presaId: 'presa2',
@@ -60,19 +83,21 @@ describe('mqtt/client', () => {
       tensione: 228,
       corrente: 0.24,
       timestamp: new Date(1_753_500_000 * 1000),
+      timestampInizio: new Date(1_753_499_970 * 1000),
+      valoreSingolo: true,
     });
   });
 
-  test('emette "datoOttimizzato" su mqttEvents dopo il salvataggio', async () => {
+  test('l\'evento pubblico "datoOttimizzato" NON contiene mai timestampInizio né valoreSingolo (solo i 5 campi pubblici)', async () => {
     const listener = jest.fn();
     mqttEvents.on('datoOttimizzato', listener);
 
-    fakeClient.emit('message', 'home/presa1/optimized', payloadEsp32());
-    await new Promise((resolve) => setImmediate(resolve));
+    fakeClient.emit('message', 'home/presa1/optimized', payloadEsp32({ valore_singolo: true }));
+    await flush();
 
-    expect(listener).toHaveBeenCalledWith(
-      expect.objectContaining({ presaId: 'presa1', potenza: 42.5 })
-    );
+    expect(listener).toHaveBeenCalledTimes(1);
+    const evento = listener.mock.calls[0][0];
+    expect(Object.keys(evento).sort()).toEqual(['corrente', 'potenza', 'presaId', 'tensione', 'timestamp'].sort());
   });
 
   test('se il salvataggio fallisce dopo i retry, viene scritto un log di sistema e NON viene lanciata eccezione', async () => {
@@ -82,7 +107,7 @@ describe('mqtt/client', () => {
       fakeClient.emit('message', 'home/presa1/optimized', payloadEsp32());
     }).not.toThrow();
 
-    await new Promise((resolve) => setImmediate(resolve));
+    await flush();
 
     expect(Log.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -92,6 +117,24 @@ describe('mqtt/client', () => {
         metadati: { presaId: 'presa1' },
       })
     );
+  });
+
+  test('REGRESSIONE: se retryConBackoff esaurisce i tentativi, NON genera una unhandled promise rejection', async () => {
+    consumoService.salvaDatoOttimizzato.mockRejectedValue(new Error('Mongo non raggiungibile'));
+
+    const unhandled = jest.fn();
+    process.on('unhandledRejection', unhandled);
+
+    try {
+      fakeClient.emit('message', 'home/presa1/optimized', payloadEsp32());
+      // L'unhandled rejection (se presente) si manifesta in modo asincrono: diversi giri di flush
+      // per dare al bug la possibilità di manifestarsi prima di asserire che non è successo.
+      await flush(5);
+
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 
   test('un messaggio con payload non JSON non blocca il client (errore loggato, nessun crash)', () => {
@@ -113,6 +156,65 @@ describe('mqtt/client', () => {
 
     expect(listener).toHaveBeenCalledWith({ componente: 'gateway', stato: 'OK' });
     expect(consumoService.salvaDatoOttimizzato).not.toHaveBeenCalled();
+  });
+
+  test('due messaggi consecutivi per la STESSA presa sono processati in sequenza stretta (accodaPerPresa)', async () => {
+    const ordine = [];
+    let risolviPrimo;
+    consumoService.salvaDatoOttimizzato
+      .mockImplementationOnce(() => {
+        ordine.push('inizio-1');
+        return new Promise((resolve) => {
+          risolviPrimo = () => {
+            ordine.push('fine-1');
+            resolve({});
+          };
+        });
+      })
+      .mockImplementationOnce(() => {
+        ordine.push('inizio-2');
+        return Promise.resolve({});
+      });
+
+    fakeClient.emit('message', 'home/presa1/optimized', payloadEsp32());
+    fakeClient.emit('message', 'home/presa1/optimized', payloadEsp32());
+    await flush(2);
+
+    // Il secondo messaggio non deve ancora essere partito: il primo è ancora "in volo".
+    expect(ordine).toEqual(['inizio-1']);
+
+    risolviPrimo();
+    await flush(3);
+
+    expect(ordine).toEqual(['inizio-1', 'fine-1', 'inizio-2']);
+  });
+
+  test('due prese DIVERSE non si bloccano a vicenda (code indipendenti per presaId)', async () => {
+    const ordine = [];
+    let risolviPresa1;
+    consumoService.salvaDatoOttimizzato.mockImplementation((arg) => {
+      if (arg.presaId === 'presa1') {
+        ordine.push('inizio-presa1');
+        return new Promise((resolve) => {
+          risolviPresa1 = () => {
+            ordine.push('fine-presa1');
+            resolve({});
+          };
+        });
+      }
+      ordine.push('presa2-eseguito');
+      return Promise.resolve({});
+    });
+
+    fakeClient.emit('message', 'home/presa1/optimized', payloadEsp32());
+    fakeClient.emit('message', 'home/presa2/optimized', payloadEsp32());
+    await flush(3);
+
+    expect(ordine).toContain('presa2-eseguito');
+    expect(ordine).not.toContain('fine-presa1');
+
+    risolviPresa1();
+    await flush(2);
   });
 
   test('inviaComando pubblica su home/<presaId>/commands con action e ip nel payload', async () => {

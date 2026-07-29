@@ -34,6 +34,9 @@ struct GruppoPresa {
   float potenzaCandidata = 0, tensioneCandidata = 0, correnteCandidata = 0;
   double tsCandidato = 0;
   uint32_t millisCandidato = 0;
+
+  // true se il valore di apertura di questo gruppo e' gia' stato pubblicato subito da pubblicaSingoloValore().
+  bool primoValorePubblicatoSingolarmente = false;
 };
 
 GruppoPresa gruppi[MAX_PRESE];
@@ -141,10 +144,19 @@ void avviaGruppo(GruppoPresa& g, const String& presaId, float potenza, float ten
   g.timestampUltimo = ts;
   g.millisUltimoArrivo = millis();
   g.sospetto = false;
+  g.primoValorePubblicatoSingolarmente = false;
 }
 
 void pubblicaOttimizzato(GruppoPresa& g) {
   if (g.conteggio == 0) return;
+
+  if (g.conteggio == 1 && g.primoValorePubblicatoSingolarmente) {
+    g.attivo = false;
+    g.conteggio = 0;
+    g.sommaPotenza = g.sommaTensione = g.sommaCorrente = 0;
+    g.sospetto = false;
+    return;
+  }
 
   accendiLed();
 
@@ -156,6 +168,7 @@ void pubblicaOttimizzato(GruppoPresa& g) {
   doc["sample_count"] = g.conteggio;
   doc["timestamp_start"] = g.timestampInizio;
   doc["timestamp_end"] = g.timestampUltimo;
+  doc["valore_singolo"] = false;
 
   char buffer[256];
   size_t n = serializeJson(doc, buffer);
@@ -194,10 +207,39 @@ void gestisciFlush() {
   }
 }
 
+// Pubblica il primo campione per notificare il nuovo gruppo che si accumulerà.
+void pubblicaSingoloValore(const String& presaId, float potenza, float tensione, float corrente, double tsInizio, double tsFine) {
+  accendiLed();
+
+  JsonDocument doc;
+  doc["presa_id"] = presaId;
+  doc["power_w"] = potenza;
+  doc["voltage_v"] = tensione;
+  doc["current_a"] = corrente;
+  doc["sample_count"] = 1;
+  doc["timestamp_start"] = tsInizio;
+  doc["timestamp_end"] = tsFine;
+  doc["valore_singolo"] = true;
+
+  char buffer[256];
+  size_t n = serializeJson(doc, buffer);
+
+  String topic = "home/" + presaId + "/optimized";
+  if (!client.publish(topic.c_str(), (const uint8_t*)buffer, n)) {
+    if (!accodaPendente(topic.c_str(), (const uint8_t*)buffer, n)) {
+      Serial.println("ERRORE: valore singolo perso, coda pendenti piena: " + topic);
+    }
+  }
+}
+
 // Pubblica il gruppo accumulato finora SENZA il candidato, poi ne apre uno nuovo a partire dal candidato (che diventa il primo campione).
 void chiudiEApriConCandidato(GruppoPresa& g) {
+  double finePrecedente = g.timestampUltimo;
+
   pubblicaOttimizzato(g);
   avviaGruppo(g, g.presaId, g.potenzaCandidata, g.tensioneCandidata, g.correnteCandidata, g.tsCandidato);
+  g.primoValorePubblicatoSingolarmente = true;
+  pubblicaSingoloValore(g.presaId, g.potenzaCandidata, g.tensioneCandidata, g.correnteCandidata, finePrecedente, g.tsCandidato);
 }
 
 void onMessage(char* topic, byte* payload, unsigned int length) {

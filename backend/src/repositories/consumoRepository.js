@@ -12,6 +12,10 @@ async function salva(dato) {
   return ConsumoOttimizzato.create(dato);
 }
 
+async function eliminaPerTimestamp(presaId, timestamp) {
+  await ConsumoOttimizzato.deleteOne({ presaId, timestamp });
+}
+
 async function trovaPerPresaERange(presaId, da, a) {
   const filtro = { presaId };
   if (da || a) {
@@ -40,7 +44,7 @@ async function leggiCache(presaId) {
   return valori.map((v) => JSON.parse(v));
 }
 
-// --- Cache di interrogazione---
+// --- Cache di interrogazione ---
 
 function chiaveRange(presaId, da, a) {
   const daChiave = da ? da.toISOString() : 'x';
@@ -70,6 +74,7 @@ async function cancellaCache(presaId) {
 
 module.exports = {
   salva,
+  eliminaPerTimestamp,
   trovaPerPresaERange,
   aggiornaCache,
   leggiCache,

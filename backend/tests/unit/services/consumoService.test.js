@@ -16,6 +16,42 @@ describe('consumoService', () => {
     consumoService.impostaGestoreSoglia(async () => {});
   });
 
+  describe('salvaDatoOttimizzato — guardia di idempotenza (redelivery MQTT QoS1)', () => {
+    test('elimina sempre un eventuale duplicato con lo stesso presaId+timestamp prima di salvare', async () => {
+      presaRepository.findByPresaId.mockResolvedValue({ presaId: 'presa1', sogliaPotenza: null, stato: 'on' });
+
+      await consumoService.salvaDatoOttimizzato({
+        presaId: 'presa1',
+        timestamp: '2026-07-20T10:00:00.000Z',
+        potenza: 50,
+        tensione: 230,
+        corrente: 0.22,
+      });
+
+      expect(consumoRepository.eliminaPerTimestamp).toHaveBeenCalledTimes(1);
+      expect(consumoRepository.eliminaPerTimestamp).toHaveBeenCalledWith(
+        'presa1',
+        new Date('2026-07-20T10:00:00.000Z')
+      );
+    });
+
+    test('la guardia di idempotenza scatta indipendentemente dal valore di valoreSingolo (true o false)', async () => {
+      presaRepository.findByPresaId.mockResolvedValue({ presaId: 'presa1', sogliaPotenza: null, stato: 'on' });
+
+      await consumoService.salvaDatoOttimizzato({
+        presaId: 'presa1',
+        timestamp: '2026-07-20T10:00:00.000Z',
+        timestampInizio: '2026-07-20T09:59:30.000Z',
+        valoreSingolo: true,
+        potenza: 11,
+        tensione: 228,
+        corrente: 0.08,
+      });
+
+      expect(consumoRepository.eliminaPerTimestamp).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('salvaDatoOttimizzato', () => {
     test('salva su mongo, aggiorna la cache e notifica via websocket', async () => {
       presaRepository.findByPresaId.mockResolvedValue({ presaId: 'presa1', sogliaPotenza: null, stato: 'on' });

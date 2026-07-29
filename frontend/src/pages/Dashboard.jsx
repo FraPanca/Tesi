@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import usePrese from '../hooks/usePrese';
 import useReadingsHistory from '../hooks/useReadingsHistory';
+import useNow from '../hooks/useNow';
 import ConsumptionChart from '../components/ConsumptionChart';
 import PresaCard from '../components/PresaCard';
 import CostEstimator from '../components/CostEstimator';
 import AddPresaForm from '../components/AddPresaForm';
 import '../style/Dashboard.css';
+
 
 const PERIODI = {
   '24h': { etichetta: '24 ore', giorni: 1 },
@@ -39,7 +41,10 @@ function Dashboard() {
   const presaIdCorrente = presaSelezionata || prese[0]?.presaId || null;
   const presaCorrente = prese.find((p) => p.presaId === presaIdCorrente);
 
-  const da = useMemo(() => calcolaDa(PERIODI[periodo].giorni), [periodo]);
+  const now = useNow(60_000);
+  const daFissa = useMemo(() => calcolaDa(PERIODI[periodo].giorni), [periodo]);
+  // Solo "24 ore" scorre in tempo reale.
+  const da = periodo === '24h' ? new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString() : daFissa;
   const { letture, loading: letturaLoading } = useReadingsHistory(presaIdCorrente, { da });
 
   async function gestisciRimozione(presaId) {
@@ -96,7 +101,7 @@ function Dashboard() {
         {presaCorrente ? (
           <>
             <h2>{presaCorrente.nome}</h2>
-            <ConsumptionChart letture={letture} loading={letturaLoading} />
+            <ConsumptionChart letture={letture} loading={letturaLoading} periodo={periodo} />
           </>
         ) : (
           <p className="dashboard__vuoto">Aggiungi una presa per iniziare a vedere i consumi.</p>
@@ -128,6 +133,5 @@ function Dashboard() {
     </div>
   );
 }
-
 
 export default Dashboard;

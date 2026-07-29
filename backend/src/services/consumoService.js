@@ -19,7 +19,10 @@ function impostaGestoreSoglia(fn) {
   inviaComandoSpegnimento = fn;
 }
 
-async function salvaDatoOttimizzato({ presaId, timestamp, potenza, tensione, corrente }) {
+// const placeholderPerPresa = new Map();
+
+
+async function salvaDatoOttimizzato({ presaId, timestamp, timestampInizio, valoreSingolo, potenza, tensione, corrente }) {
   const dato = {
     presaId,
     timestamp: timestamp ? new Date(timestamp) : new Date(),
@@ -28,10 +31,31 @@ async function salvaDatoOttimizzato({ presaId, timestamp, potenza, tensione, cor
     corrente,
   };
 
+  await consumoRepository.eliminaPerTimestamp(presaId, dato.timestamp);
+
+  /*
+  if (!valoreSingolo) {
+    // Aggregato finale: se il suo timestamp di inizio combacia esattamente col placeholder registrato in attesa per
+    // questa presa, quel placeholder va rimosso dal db.
+    const placeholderInAttesa = placeholderPerPresa.get(presaId);
+    if (placeholderInAttesa && timestampInizio && placeholderInAttesa.getTime() === new Date(timestampInizio).getTime()) {
+      await consumoRepository.eliminaPerTimestamp(presaId, placeholderInAttesa);
+      placeholderPerPresa.delete(presaId);
+    }
+  }
+  */
+
   await consumoRepository.salva(dato);
   await consumoRepository.aggiornaCache(presaId, dato);
   notificaWebSocket(presaId, dato);
   await verificaSogliaPotenza(presaId, potenza);
+
+  /*
+  if (valoreSingolo) {
+    // Registra questo placeholder come "in attesa" per la presa, per poterlo ritrovare quando arriverà l'aggregato finale che lo chiude.
+    placeholderPerPresa.set(presaId, dato.timestamp);
+  }
+  */
 
   return dato;
 }

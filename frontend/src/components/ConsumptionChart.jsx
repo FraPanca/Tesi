@@ -4,14 +4,18 @@ import {
   LineElement,
   PointElement,
   LinearScale,
-  CategoryScale,
+  TimeScale,
   Tooltip,
   Legend,
 } from 'chart.js';
+import 'chartjs-adapter-date-fns';
+import { it } from 'date-fns/locale';
 import { Line } from 'react-chartjs-2';
+import useNow from '../hooks/useNow';
 import '../style/ConsumptionChart.css';
 
-ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend);
+ChartJS.register(LineElement, PointElement, LinearScale, TimeScale, Tooltip, Legend);
+
 
 const SERIE = {
   potenza: { etichetta: 'Potenza', unita: 'W', colore: '#8a5a2e', chiave: 'potenza' },
@@ -24,34 +28,40 @@ const COLORE_GRIGLIA = '#dce1e0';
 
 // Grafico dei consumi per UNA presa. Potenza (decine/centinaia di W), tensione (~230V) e corrente (<1A tipicamente)
 // hanno scale di valori troppo diverse per condividere lo stesso asse in modo leggibile.
-function ConsumptionChart({ letture, loading }) {
+
+// Asse X a scala temporale (`type: 'time'`), non a categorie: le letture NON arrivano a intervalli regolari (dipende da quando
+// ESP32/gateway pubblicano), quindi uno spaziamento "a slot uguali" tra i punti darebbe una rappresentazione fuorviante.
+function ConsumptionChart({ letture, loading, periodo = '7g' }) {
   const [serieAttiva, setSerieAttiva] = useState('potenza');
   const config = SERIE[serieAttiva];
+  const now = useNow(60_000);
+  // "minUnit", non "unit": lascia comunque a Chart.js la libertà di passare a un'unità più grande quando serve.
+  const minUnit = periodo === '24h' ? 'hour' : 'day';
 
-  const dati = useMemo(
-    () => ({
-      labels: letture.map((l) =>
-        new Date(l.timestamp).toLocaleString('it-IT', {
-          day: '2-digit',
-          month: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      ),
+  const dati = useMemo(() => {
+    const ordinate = [...letture].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const punti = ordinate.map((l) => ({ x: new Date(l.timestamp), y: l[config.chiave] }));
+
+    // Distende l'ultimo valore noto fino ad "ora" con un punto sintetico (non una lettura reale).
+    const ultimo = punti[punti.length - 1];
+    if (ultimo && now.getTime() > ultimo.x.getTime()) {
+      punti.push({ x: now, y: ultimo.y });
+    }
+
+    return {
       datasets: [
         {
           label: `${config.etichetta} (${config.unita})`,
-          data: letture.map((l) => l[config.chiave]),
+          data: punti,
           borderColor: config.colore,
           backgroundColor: config.colore,
-          tension: 0.3,
+          cubicInterpolationMode: 'monotone',
           pointRadius: 0,
           borderWidth: 2,
         },
       ],
-    }),
-    [letture, config],
-  );
+    };
+  }, [letture, config, now]);
 
   const opzioni = {
     responsive: true,
@@ -59,10 +69,28 @@ function ConsumptionChart({ letture, loading }) {
     animation: { duration: 250 },
     plugins: {
       legend: { display: false },
-      tooltip: { callbacks: { label: (ctx) => `${ctx.formattedValue} ${config.unita}` } },
+      tooltip: {
+        callbacks: { label: (ctx) => `${ctx.formattedValue} ${config.unita}` },
+      },
     },
     scales: {
-      x: { ticks: { maxTicksLimit: 8, color: COLORE_ASSE }, grid: { display: false } },
+      x: {
+        type: 'time',
+        adapters: { date: { locale: it } },
+        time: {
+          minUnit,
+          tooltipFormat: 'd MMM yyyy, HH:mm',
+          displayFormats: {
+            minute: 'HH:mm',
+            hour: 'HH:mm',
+            day: 'd MMM',
+            week: 'd MMM',
+            month: 'MMM yyyy',
+          },
+        },
+        ticks: { maxTicksLimit: 8, color: COLORE_ASSE },
+        grid: { display: false },
+      },
       y: { ticks: { color: COLORE_ASSE }, grid: { color: COLORE_GRIGLIA } },
     },
   };

@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import usePrese from '../hooks/usePrese';
 import useReadingsHistory from '../hooks/useReadingsHistory';
+import useNow from '../hooks/useNow';
 import ConsumptionChart from '../components/ConsumptionChart';
 import '../style/PresaDetail.css';
+
 
 const PERIODI = {
   '24h': { etichetta: '24 ore', giorni: 1 },
@@ -33,7 +35,9 @@ function PresaDetail() {
   const [erroreComando, setErroreComando] = useState(null);
 
   const presa = prese.find((p) => p.presaId === presaId);
-  const da = useMemo(() => calcolaDa(PERIODI[periodo].giorni), [periodo]);
+  const now = useNow(60_000);
+  const daFissa = useMemo(() => calcolaDa(PERIODI[periodo].giorni), [periodo]);
+  const da = periodo === '24h' ? new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString() : daFissa;
   const { letture, loading: letturaLoading } = useReadingsHistory(presaId, { da });
 
   if (loading) return <p className="presa-detail__stato">Caricamento…</p>;
@@ -184,7 +188,7 @@ function PresaDetail() {
             </button>
           ))}
         </div>
-        <ConsumptionChart letture={letture} loading={letturaLoading} />
+        <ConsumptionChart letture={letture} loading={letturaLoading} periodo={periodo} />
       </section>
     </div>
   );
