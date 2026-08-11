@@ -1,0 +1,9 @@
+[Unit]
+Description=Esegue il forecast Prophet una volta al giorno
+
+[Timer]
+OnCalendar=*-*-* 00:05:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,22 @@
+# Interruzioni dichiarate ESPLICITAMENTE dall'utente.
+#
+# Due tipi, NON intercambiabili:
+#   assenza_vera      -> nessun dato affidabile disponibile (es. presa scollegata fisicamente).
+#                         I punti della griglia oraria in questo intervallo diventano NaN e vengono esclusi dal training.
+#
+#   evento_speciale   -> la presa e' rimasta collegata, i dati sono reali ma anomali (es. vacanza: consumo quasi nullo ma
+#                         genuino). Restano nel training, ma modellati esplicitamente come "holiday" di Prophet, ed esclusi
+#                         solo dai cutoff usati per calcolare le metriche di accuratezza standard, altrimenti gonfierebbero
+#                         l'errore.
+#
+# Campi:
+#   presa  -> presaId di una singola presa, oppure "tutte" per un evento che riguarda l'intero sistema (es. un blackout).
+#
+#   da/a   -> date di calendario (YYYY-MM-DD), ora locale Europe/Rome, entrambe inclusive.
+
+interruzioni:
+  - nome: "Vacanza agosto 2026"
+    presa: "presa1"
+    tipo: evento_speciale
+    da: "2026-08-01"
+    a: "2026-08-08"

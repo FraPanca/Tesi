@@ -7,5 +7,11 @@ async function getLogs(req, res) {
   res.json(log);
 }
 
+async function postLog(req, res) {
+  const { livello, evento, messaggio, metadati } = req.body;
+  const log = await logService.creaLog({ origine: 'sistema', livello, evento, messaggio, metadati });
+  res.status(201).json(log);
+}
 
-module.exports = { getLogs };
+
+module.exports = { getLogs, postLog };

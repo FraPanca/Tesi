@@ -4,8 +4,8 @@ import usePrese from '../hooks/usePrese';
 import useReadingsHistory from '../hooks/useReadingsHistory';
 import useNow from '../hooks/useNow';
 import ConsumptionChart from '../components/ConsumptionChart';
+import PrevisioniPanel from '../components/PrevisioniPanel';
 import '../style/PresaDetail.css';
-
 
 const PERIODI = {
   '24h': { etichetta: '24 ore', giorni: 1 },
@@ -190,9 +190,10 @@ function PresaDetail() {
         </div>
         <ConsumptionChart letture={letture} loading={letturaLoading} periodo={periodo} />
       </section>
+
+      <PrevisioniPanel presaId={presaId} />
     </div>
   );
 }
-
 
 export default PresaDetail;

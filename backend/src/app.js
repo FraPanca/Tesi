@@ -21,7 +21,7 @@ app.use('/api/consumi', require('./routes/consumoRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/logs', require('./routes/logRoutes'));
-// TODO: montare qui il router previsioni quando sarà definito
+app.use('/api/previsioni', require('./routes/previsioneRoutes'));
 
 // I controller (routes/*, controllers/*) non hanno try/catch espliciti sulle chiamate async: da Express 5 in poi una 
 // promise rifiutata ritornata da un route handler viene inoltrata automaticamente a next(err) e arriva comunque qui 

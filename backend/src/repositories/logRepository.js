@@ -21,5 +21,9 @@ async function trova({ evento, livello, origine, da, a, limite } = {}) {
   return Log.find(filtro).sort({ timestamp: -1 }).limit(limiteEffettivo);
 }
 
+async function crea(dato) {
+  return Log.create(dato);
+}
 
-module.exports = { trova };
+
+module.exports = { trova, crea };

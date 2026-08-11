@@ -1,0 +1,40 @@
+.previsioni-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.previsioni-panel h4 {
+  font-size: 0.95rem;
+  margin-bottom: 0.6rem;
+}
+
+.previsioni-panel__stato {
+  color: var(--color-ink-soft);
+  margin: 0;
+}
+
+.previsioni-panel__errore {
+  color: var(--color-danger);
+  margin: 0;
+}
+
+.previsioni-panel__picco {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-ink-soft);
+}
+.previsioni-panel__picco strong {
+  color: var(--color-ink);
+  text-transform: capitalize;
+}
+
+.previsioni-panel__suggerimenti {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  color: var(--color-ink);
+}

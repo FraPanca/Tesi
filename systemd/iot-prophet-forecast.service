@@ -1,0 +1,9 @@
+[Unit]
+Description=IoT Energy Monitor - Prophet forecast giornaliero
+After=iot-energy-docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/francesco/iot
+ExecStart=/usr/bin/docker compose --profile jobs run --rm prophet

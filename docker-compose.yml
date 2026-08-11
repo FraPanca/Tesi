@@ -88,6 +88,15 @@ services:
     ports:
       - "80:80"
 
+  prophet:
+    build: ./prophet
+    container_name: prophet
+    profiles: ["jobs"]
+    environment:
+      BACKEND_URL: http://backend:3000
+    depends_on:
+      - backend
+
 networks:
   default:
     name: iot-net
