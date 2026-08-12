@@ -2,8 +2,9 @@
 
 Sistema IoT domestico per il monitoraggio e l'ottimizzazione dei consumi energetici, basato su Raspberry Pi 5.
 
-*Tesi di laurea triennale — Ingegneria Informatica.*
+*Tesi di laurea triennale - Ingegneria Informatica.*
 
+![Architettura del sistema](docs/img/Architecture.jpg)
 ## Italiano
 
 ### Descrizione
@@ -15,6 +16,7 @@ Il sistema monitora in tempo reale i consumi energetici domestici tramite prese 
 - **Backend**: Node.js, Express 5, Mongoose (MongoDB), client Redis, Socket.IO, MQTT.js, JWT (`jsonwebtoken`), `bcryptjs`
 - **Frontend**: React 19, Vite, React Router, Chart.js, client Socket.IO, nginx (servito in produzione)
 - **Gateway**: Python 3.13, `python-kasa`, `paho-mqtt`
+- **Previsione**: Python 3.11, Prophet, scikit-learn (rilevamento anomalie)
 - **Firmware**: C++ (Arduino/ESP32), `PubSubClient`, `ArduinoJson`
 - **Broker messaggi**: Eclipse Mosquitto 2 (MQTT)
 - **Persistenza**: MongoDB 7, Redis 7
@@ -25,7 +27,7 @@ Il sistema monitora in tempo reale i consumi energetici domestici tramite prese 
 ### Requisiti hardware
 
 - Raspberry Pi 5, 8 GB RAM, scheda SD
-- Hard disk esterno WD Elements 1TB, formattato ext4 — usato per la persistenza dei dati (MongoDB, Redis), non la scheda SD, per evitarne l'usura
+- Hard disk esterno WD Elements 1TB, formattato ext4, usato per la persistenza dei dati (MongoDB, Redis) al posto della scheda SD, per evitarne l'usura
 - 2× presa smart TP-Link Tapo P110
 - 3× ESP32 (1 come load balancer, 2 come elaboratori)
 
@@ -36,8 +38,8 @@ Il Raspberry Pi e le due prese Tapo hanno un indirizzo IP fisso, riservato dal *
 | Dispositivo | IP |
 |---|---|
 | Raspberry Pi 5 | `192.168.1.178` |
-| Presa Tapo P110 — presa1 | `192.168.1.180` |
-| Presa Tapo P110 — presa2 | `192.168.1.181` |
+| Presa Tapo P110 - presa1 | `192.168.1.180` |
+| Presa Tapo P110 - presa2 | `192.168.1.181` |
 
 Questi indirizzi sono quelli effettivamente usati in `gateway/config/devices.json`, in `esp32/*/secrets.h` (come `MQTT_BROKER`) e nei payload dei comandi (`{"action":"off","ip":"192.168.1.180"}`).
 
@@ -62,7 +64,18 @@ Prese Tapo P110 → Gateway (Python) → Broker MQTT (Mosquitto)
                               Frontend (React)
 ```
 
-**Il gateway Python è l'unico servizio dell'architettura a girare fuori Docker**, nativamente sull'host del Raspberry Pi. La scelta è motivata dal fatto che il gateway deve comunicare direttamente con le prese Tapo sulla rete locale (individuazione e comunicazione tramite `python-kasa`, che si aspetta di operare sulla stessa rete IP dei dispositivi): containerizzarlo avrebbe richiesto una rete Docker in modalità host per garantire la stessa visibilità sulla LAN, una complessità aggiuntiva non giustificata per un singolo servizio Python senza altre dipendenze di containerizzazione. Il gateway raggiunge comunque il broker MQTT (che gira in Docker) tramite `localhost`, sfruttando il port mapping esposto dal container Mosquitto — non tramite il nome del servizio Compose `mosquitto`, che sarebbe risolvibile solo dall'interno della rete Docker.
+**Il gateway Python è l'unico servizio dell'architettura a girare fuori Docker**, nativamente sull'host del Raspberry Pi. La scelta è motivata dal fatto che il gateway deve comunicare direttamente con le prese Tapo sulla rete locale (individuazione e comunicazione tramite `python-kasa`, che si aspetta di operare sulla stessa rete IP dei dispositivi): containerizzarlo avrebbe richiesto una rete Docker in modalità host per garantire la stessa visibilità sulla LAN, una complessità aggiuntiva non giustificata per un singolo servizio Python senza altre dipendenze di containerizzazione. Il gateway raggiunge comunque il broker MQTT (che gira in Docker) tramite `localhost`, sfruttando il port mapping esposto dal container Mosquitto, non tramite il nome del servizio Compose `mosquitto`, che sarebbe risolvibile solo dall'interno della rete Docker.
+
+**Prophet non compare nel diagramma sopra** perché non è un servizio sempre acceso come gli altri: è un **batch job giornaliero**, containerizzato ma con profilo Compose `jobs` (non parte con `docker compose up -d` di default), avviato da un timer systemd dedicato con il proprio ciclo di vita, indipendente dal resto del sistema. Ad ogni esecuzione legge lo storico dei consumi e scrive le previsioni tramite una chiamata REST al backend (`BACKEND_URL`), poi termina. Se lo stack Docker è stato fermato a mano, il job semplicemente fallisce (segnalato con `POST /api/logs`) e il timer riprova il giorno successivo, senza impattare il resto del sistema:
+
+```
+Prophet (batch giornaliero, timer systemd)
+        │  legge storico / scrive previsioni (REST, BACKEND_URL)
+        ▼
+Backend (Node/Express)
+```
+
+Dettagli in [`prophet/README.md`](prophet/README.md) e [`systemd/README.md`](systemd/README.md).
 
 ### Flusso dati e topic MQTT
 
@@ -88,6 +101,7 @@ Il flusso "dati" procede in un verso (presa → gateway → load balancer → wo
 | `backend/` | API REST + WebSocket, persistenza, autenticazione, logging | [backend/README.md](backend/README.md) |
 | `frontend/` | Web app React (dashboard, grafici, controllo prese) | [frontend/README.md](frontend/README.md) |
 | `gateway/` | Servizio Python di lettura/controllo delle prese Tapo | [gateway/README.md](gateway/README.md) |
+| `prophet/` | Previsione dei consumi (Prophet), batch job schedulato | [prophet/README.md](prophet/README.md) |
 | `mosquitto/` | Configurazione del broker MQTT | [mosquitto/README.md](mosquitto/README.md) |
 | `esp32/` | Firmware C++ per load balancer e worker ESP32 | [esp32/README.md](esp32/README.md) |
 | `systemd/` | Unit systemd per l'avvio automatico del sistema | [systemd/README.md](systemd/README.md) |
@@ -121,15 +135,15 @@ sudo chown -R 999:999 /mnt/wd1tb/iot-energy/mongodb
 sudo chown -R 999:999 /mnt/wd1tb/iot-energy/redis
 ```
 
-#### 3. Variabili d'ambiente — tre file `.env` distinti
+#### 3. Variabili d'ambiente: tre file `.env` distinti
 
 Il sistema usa **tre file `.env` separati**, con scopi diversi. `MQTT_USER`/`MQTT_PASSWORD` devono avere lo **stesso valore in tutti e tre**.
 
 | File | Letto da | Obbligatorio |
 |---|---|---|
-| `.env` (root) | `docker-compose.yml`, interpolazione `${...}` | Sì — senza, i container non ricevono le credenziali |
-| `backend/.env` | `npm run dev` in locale, fuori Docker | No — il container backend non lo legge |
-| `gateway/config/.env` | Script Python del gateway | Sì, sempre — unica fonte di credenziali del gateway (mai containerizzato) |
+| `.env` (root) | `docker-compose.yml`, interpolazione `${...}` | Sì, senza i container non ricevono le credenziali |
+| `backend/.env` | `npm run dev` in locale, fuori Docker | No, il container backend non lo legge |
+| `gateway/config/.env` | Script Python del gateway | Sì, sempre: unica fonte di credenziali del gateway (mai containerizzato) |
 
 Copiare il rispettivo `.env.example` in `.env` in ciascuna posizione e compilare i valori. Generazione dei segreti:
 
@@ -156,7 +170,7 @@ Impostare le variabili d'ambiente Docker (già fatto nel compose) **non crea da 
 
 #### 5. Configurazione degli ESP32
 
-Per ciascuna delle tre cartelle in `esp32/` (`load_balancer/`, `worker1/`, `worker2/`), copiare `secrets.h.example` in `secrets.h` e compilare con SSID/password WiFi, l'IP del Raspberry (`192.168.1.178`) e le stesse credenziali MQTT usate sopra. Flashare da Arduino IDE — dettagli in [`esp32/README.md`](esp32/README.md).
+Per ciascuna delle tre cartelle in `esp32/` (`load_balancer/`, `worker1/`, `worker2/`), copiare `secrets.h.example` in `secrets.h` e compilare con SSID/password WiFi, l'IP del Raspberry (`192.168.1.178`) e le stesse credenziali MQTT usate sopra. Flashare da Arduino IDE: dettagli in [`esp32/README.md`](esp32/README.md).
 
 #### 6. Avvio dello stack Docker
 
@@ -193,16 +207,35 @@ Gestione tramite lo script wrapper:
 ./manage.sh status
 ```
 
+#### 9. Installazione del job Prophet (previsioni)
+
+A differenza degli altri componenti, Prophet non fa parte dello stack avviato al punto 6: richiede un passaggio di integrazione nel `docker-compose.yml` e l'installazione di una unit systemd separata.
+
+```bash
+cd prophet
+cp config/.env.example config/.env   # e compilare BACKEND_URL
+```
+
+Unire manualmente il blocco del servizio `prophet` sotto `services:` nel `docker-compose.yml` di root (dettagli e blocco completo in [`prophet/README.md`](prophet/README.md)), poi installare il timer:
+
+```bash
+sudo cp systemd/iot-prophet-forecast.service systemd/iot-prophet-forecast.timer /etc/systemd/system/
+sudo systemd-analyze verify iot-prophet-forecast.service iot-prophet-forecast.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now iot-prophet-forecast.timer
+```
+
+Dettagli completi (formato di `config/interruzioni.yaml`, test manuale del job, motivazione delle scelte sulla unit) in [`prophet/README.md`](prophet/README.md) e [`systemd/README.md`](systemd/README.md).
+
 ### Testing
 
-Suite di test automatizzata su backend (Jest, 62 test) e frontend (Vitest, 48 test) a copertura funzionale dei percorsi critici. Gateway e firmware ESP32 restano verificati solo manualmente (`mosquitto_pub`/`sub`, CLI `kasa`, Serial Monitor). Dettagli nei README di [`backend/`](backend/README.md) e [`frontend/`](frontend/README.md).
+Suite di test automatizzata su backend (Jest, 101 test), frontend (Vitest, 95 test) e prophet (pytest, 92 test): 288 test in totale sui tre componenti coperti. Gateway e firmware ESP32 restano verificati solo manualmente (`mosquitto_pub`/`sub`, CLI `kasa`, Serial Monitor). Dettagli nei README di [`backend/`](backend/README.md), [`frontend/`](frontend/README.md) e [`prophet/`](prophet/README.md).
 
 ### Limitazioni note
 
-- Comunicazione MQTT degli ESP32 con QoS 0 reale (limite della libreria `PubSubClient`), compensato lato firmware con una coda di ritentativo solo in RAM — non sopravvive a una perdita di alimentazione della scheda.
+- Comunicazione MQTT degli ESP32 con QoS 0 reale (limite della libreria `PubSubClient`), compensato lato firmware con una coda di ritentativo solo in RAM: non sopravvive a una perdita di alimentazione della scheda.
 - Load balancer statico su 2 worker fissi, nessuna registrazione dinamica di nuovi elaboratori.
 - Backend esposto su HTTP semplice (non HTTPS): scelta motivata dal fatto che il traffico remoto passa comunque da Tailscale, cifrato a livello WireGuard.
-- Sezione di previsione/suggerimenti nel frontend predisposta ma non ancora collegata a un endpoint backend attivo.
 - Singolo utente amministratore con credenziali fisse in `.env`, nessuna gestione multi-utente.
 
 ---
@@ -218,6 +251,7 @@ The system monitors household energy consumption in real time through smart plug
 - **Backend**: Node.js, Express 5, Mongoose (MongoDB), Redis client, Socket.IO, MQTT.js, JWT (`jsonwebtoken`), `bcryptjs`
 - **Frontend**: React 19, Vite, React Router, Chart.js, Socket.IO client, nginx (serving in production)
 - **Gateway**: Python 3.13, `python-kasa`, `paho-mqtt`
+- **Forecasting**: Python 3.11, Prophet, scikit-learn (anomaly detection)
 - **Firmware**: C++ (Arduino/ESP32), `PubSubClient`, `ArduinoJson`
 - **Message broker**: Eclipse Mosquitto 2 (MQTT)
 - **Persistence**: MongoDB 7, Redis 7
@@ -228,7 +262,7 @@ The system monitors household energy consumption in real time through smart plug
 ### Hardware requirements
 
 - Raspberry Pi 5, 8 GB RAM, SD card
-- WD Elements 1TB external hard disk, formatted ext4 — used for data persistence (MongoDB, Redis) instead of the SD card, to avoid wear
+- WD Elements 1TB external hard disk, formatted ext4, used for data persistence (MongoDB, Redis) instead of the SD card, to avoid wear
 - 2× TP-Link Tapo P110 smart plug
 - 3× ESP32 (1 as load balancer, 2 as processors)
 
@@ -239,8 +273,8 @@ The Raspberry Pi and the two Tapo plugs have a fixed IP address, reserved from t
 | Device | IP |
 |---|---|
 | Raspberry Pi 5 | `192.168.1.178` |
-| Tapo P110 plug — presa1 | `192.168.1.180` |
-| Tapo P110 plug — presa2 | `192.168.1.181` |
+| Tapo P110 plug - presa1 | `192.168.1.180` |
+| Tapo P110 plug - presa2 | `192.168.1.181` |
 
 These are the addresses actually used in `gateway/config/devices.json`, in `esp32/*/secrets.h` (as `MQTT_BROKER`), and in command payloads (`{"action":"off","ip":"192.168.1.180"}`).
 
@@ -265,7 +299,18 @@ Tapo P110 plugs → Gateway (Python) → MQTT Broker (Mosquitto)
                               Frontend (React)
 ```
 
-**The Python gateway is the only service in the architecture running outside Docker**, natively on the Raspberry Pi host. This choice is motivated by the fact that the gateway needs to communicate directly with the Tapo plugs on the local network (discovery and communication via `python-kasa`, which expects to operate on the same IP network as the devices): containerizing it would have required Docker host networking to guarantee the same LAN visibility — added complexity not justified for a single Python service with no other containerization dependencies. The gateway still reaches the MQTT broker (which runs in Docker) via `localhost`, relying on the port mapping exposed by the Mosquitto container — not via the Compose service name `mosquitto`, which would only be resolvable from inside the Docker network.
+**The Python gateway is the only service in the architecture running outside Docker**, natively on the Raspberry Pi host. This choice is motivated by the fact that the gateway needs to communicate directly with the Tapo plugs on the local network (discovery and communication via `python-kasa`, which expects to operate on the same IP network as the devices): containerizing it would have required Docker host networking to guarantee the same LAN visibility, added complexity not justified for a single Python service with no other containerization dependencies. The gateway still reaches the MQTT broker (which runs in Docker) via `localhost`, relying on the port mapping exposed by the Mosquitto container, not via the Compose service name `mosquitto`, which would only be resolvable from inside the Docker network.
+
+**Prophet does not appear in the diagram above** because it isn't an always-on service like the others: it's a **daily batch job**, containerized but under the Compose `jobs` profile (it does not start with `docker compose up -d` by default), triggered by a dedicated systemd timer with its own lifecycle, independent from the rest of the system. On each run it reads the consumption history and writes the forecasts through a REST call to the backend (`BACKEND_URL`), then exits. If the Docker stack was stopped by hand, the job simply fails (reported via `POST /api/logs`) and the timer retries the next day, without impacting the rest of the system:
+
+```
+Prophet (daily batch job, systemd timer)
+        │  reads history / writes forecasts (REST, BACKEND_URL)
+        ▼
+Backend (Node/Express)
+```
+
+Details in [`prophet/README.md`](prophet/README.md) and [`systemd/README.md`](systemd/README.md).
 
 ### Data flow and MQTT topics
 
@@ -291,6 +336,7 @@ The "data" flow moves in one direction (plug → gateway → load balancer → w
 | `backend/` | REST + WebSocket API, persistence, authentication, logging | [backend/README.md](backend/README.md) |
 | `frontend/` | React web app (dashboard, charts, plug control) | [frontend/README.md](frontend/README.md) |
 | `gateway/` | Python service for reading/controlling the Tapo plugs | [gateway/README.md](gateway/README.md) |
+| `prophet/` | Consumption forecasting (Prophet), scheduled batch job | [prophet/README.md](prophet/README.md) |
 | `mosquitto/` | MQTT broker configuration | [mosquitto/README.md](mosquitto/README.md) |
 | `esp32/` | C++ firmware for the load balancer and worker ESP32 boards | [esp32/README.md](esp32/README.md) |
 | `systemd/` | systemd units for automatic system startup | [systemd/README.md](systemd/README.md) |
@@ -324,15 +370,15 @@ sudo chown -R 999:999 /mnt/wd1tb/iot-energy/mongodb
 sudo chown -R 999:999 /mnt/wd1tb/iot-energy/redis
 ```
 
-#### 3. Environment variables — three separate `.env` files
+#### 3. Environment variables: three separate `.env` files
 
 The system uses **three separate `.env` files**, each with a different purpose. `MQTT_USER`/`MQTT_PASSWORD` must have the **same value in all three**.
 
 | File | Read by | Required |
 |---|---|---|
-| `.env` (root) | `docker-compose.yml`, `${...}` interpolation | Yes — without it, containers receive no credentials |
-| `backend/.env` | `npm run dev` locally, outside Docker | No — the backend container never reads it |
-| `gateway/config/.env` | Gateway Python scripts | Yes, always — the gateway's only source of credentials (never containerized) |
+| `.env` (root) | `docker-compose.yml`, `${...}` interpolation | Yes, without it containers receive no credentials |
+| `backend/.env` | `npm run dev` locally, outside Docker | No, the backend container never reads it |
+| `gateway/config/.env` | Gateway Python scripts | Yes, always: the gateway's only source of credentials (never containerized) |
 
 Copy the corresponding `.env.example` to `.env` in each location and fill in the values. Secret generation:
 
@@ -359,7 +405,7 @@ Setting the Docker environment variables (already done in the compose file) does
 
 #### 5. ESP32 configuration
 
-For each of the three folders under `esp32/` (`load_balancer/`, `worker1/`, `worker2/`), copy `secrets.h.example` to `secrets.h` and fill in the WiFi SSID/password, the Raspberry Pi's IP (`192.168.1.178`), and the same MQTT credentials used above. Flash from Arduino IDE — details in [`esp32/README.md`](esp32/README.md).
+For each of the three folders under `esp32/` (`load_balancer/`, `worker1/`, `worker2/`), copy `secrets.h.example` to `secrets.h` and fill in the WiFi SSID/password, the Raspberry Pi's IP (`192.168.1.178`), and the same MQTT credentials used above. Flash from Arduino IDE: details in [`esp32/README.md`](esp32/README.md).
 
 #### 6. Starting the Docker stack
 
@@ -396,14 +442,33 @@ Managed through the wrapper script:
 ./manage.sh status
 ```
 
+#### 9. Installing the Prophet job (forecasting)
+
+Unlike the other components, Prophet is not part of the stack started in step 6: it requires an integration step in `docker-compose.yml` and the installation of a separate systemd unit.
+
+```bash
+cd prophet
+cp config/.env.example config/.env   # and fill in BACKEND_URL
+```
+
+Merge the `prophet` service block manually under `services:` in the root `docker-compose.yml` (full block and details in [`prophet/README.md`](prophet/README.md)), then install the timer:
+
+```bash
+sudo cp systemd/iot-prophet-forecast.service systemd/iot-prophet-forecast.timer /etc/systemd/system/
+sudo systemd-analyze verify iot-prophet-forecast.service iot-prophet-forecast.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now iot-prophet-forecast.timer
+```
+
+Full details (the `config/interruzioni.yaml` format, manually testing the job, the reasoning behind the unit's settings) in [`prophet/README.md`](prophet/README.md) and [`systemd/README.md`](systemd/README.md).
+
 ### Testing
 
-Automated test suite on the backend (Jest, 62 tests) and frontend (Vitest, 48 tests) covering the critical paths functionally. The gateway and ESP32 firmware are still only verified manually (`mosquitto_pub`/`sub`, the `kasa` CLI, Serial Monitor). Details in the [`backend/`](backend/README.md) and [`frontend/`](frontend/README.md) READMEs.
+Automated test suite on the backend (Jest, 101 tests), frontend (Vitest, 95 tests), and prophet (pytest, 92 tests): 288 tests in total across the three components covered so far. The gateway and ESP32 firmware are still only verified manually (`mosquitto_pub`/`sub`, the `kasa` CLI, Serial Monitor). Details in the [`backend/`](backend/README.md), [`frontend/`](frontend/README.md), and [`prophet/`](prophet/README.md) READMEs.
 
 ### Known limitations
 
-- ESP32 MQTT communication uses real QoS 0 (a limitation of the `PubSubClient` library), compensated on the firmware side with a RAM-only retry queue — it does not survive a power loss on the board.
+- ESP32 MQTT communication uses real QoS 0 (a limitation of the `PubSubClient` library), compensated on the firmware side with a RAM-only retry queue: it does not survive a power loss on the board.
 - Static load balancer with 2 fixed workers, no dynamic registration of additional processors.
 - The backend is exposed over plain HTTP (not HTTPS): this choice is justified by the fact that remote traffic already goes through Tailscale, encrypted at the WireGuard layer.
-- The forecast/suggestions section in the frontend is scaffolded but not yet wired to an active backend endpoint.
 - Single administrator account with fixed credentials in `.env`, no multi-user management.

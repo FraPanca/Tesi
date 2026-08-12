@@ -6,7 +6,7 @@ Firmware C++ per i 3 ESP32 del sistema (1 load balancer + 2 worker). Parte del p
 
 ### Descrizione
 
-Il **load balancer** riceve i dati grezzi pubblicati dal gateway (sottoscrive `home/+/raw`) e li instrada verso uno dei 2 **worker**, calcolando un hash sul topic MQTT di arrivo e instradando in base alla sua parità (pari/dispari): la stessa presa finisce quindi sempre sullo stesso worker, non un round-robin per singolo messaggio. Ogni **worker** raggruppa le letture simili entro una certa tolleranza, scarta errori/rumore isolato, e pubblica il dato ottimizzato consumato poi dal backend. I tre ESP32 comunicano solo via WiFi + MQTT — nessun collegamento fisico tra loro, tranne durante flash/debug via USB.
+Il **load balancer** riceve i dati grezzi pubblicati dal gateway (sottoscrive `home/+/raw`) e li instrada verso uno dei 2 **worker**, calcolando un hash sul topic MQTT di arrivo e instradando in base alla sua parità (pari/dispari): la stessa presa finisce quindi sempre sullo stesso worker, non un round-robin per singolo messaggio. Ogni **worker** raggruppa le letture simili entro una certa tolleranza, scarta errori/rumore isolato, e pubblica il dato ottimizzato consumato poi dal backend. I tre ESP32 comunicano solo via WiFi + MQTT, senza collegamento fisico tra loro tranne durante flash/debug via USB.
 
 ### Requisiti di sistema
 
@@ -14,16 +14,16 @@ Il **load balancer** riceve i dati grezzi pubblicati dal gateway (sottoscrive `h
 - Board package "esp32 by Espressif Systems", da Boards Manager: `https://espressif.github.io/arduino-esp32/package_esp32_index.json`
 - Board selezionata: "ESP32 Dev Module"
 - Librerie (Library Manager):
-  - `PubSubClient` (Nick O'Leary) — limite noto: supporta solo QoS 0 in pubblicazione (nessuna ritrasmissione/ack reale a livello di protocollo)
-  - `ArduinoJson` ≥ 7.0 (Benoit Blanchon) — API `JsonDocument`, non la vecchia `StaticJsonDocument<N>` di v6
-- Driver USB-seriale corretto per la propria board (CP2102/CP2104 → Silicon Labs; CH340/CH9102 → WCH)
+  - `PubSubClient` (Nick O'Leary): supporta solo QoS 0 in pubblicazione, nessuna ritrasmissione/ack reale a livello di protocollo
+  - `ArduinoJson` ≥ 7.0 (Benoit Blanchon): API `JsonDocument`, non la vecchia `StaticJsonDocument<N>` di v6
+- Driver USB-seriale adatto alla propria board (CP2102/CP2104: Silicon Labs; CH340/CH9102: WCH)
 - Alimentazione **dedicata consigliata** per ogni ESP32: un hub USB passivo condiviso può causare brownout/reset (`POWERON_RESET`, `RTCWDT_RTC_RESET`) per i picchi di corrente del WiFi (~400-500mA)
 
 ### Setup
 
 1. Installare Arduino IDE + board package ESP32
 2. Installare `PubSubClient` e `ArduinoJson` da Library Manager
-3. Installare il driver USB-seriale corretto
+3. Installare il driver USB-seriale adatto alla propria board
 4. Per ciascuna cartella (`load_balancer/`, `worker1/`, `worker2/`): copiare `secrets.h.example` in `secrets.h` e compilare:
    ```c
    #define WIFI_SSID     "..."
@@ -46,9 +46,9 @@ esp32/
 ├── load_balancer/
 │   ├── load_balancer.ino
 │   ├── config.h
-│   │   # non sensibile, versionabile — gestione LED specifica del load balancer
+│   │   # non sensibile, versionabile; gestione LED specifica del load balancer
 │   ├── secrets.h
-│   │   # WiFi + credenziali MQTT — NON versionare
+│   │   # WiFi + credenziali MQTT, NON versionare
 │   ├── secrets.h.example
 │   │   # template versionabile
 ├── worker1/
@@ -92,9 +92,9 @@ La soglia di raggruppamento effettiva è calcolata come `max(SOGLIA_ASSOLUTA_W, 
 | `home/<presa_id>/optimized` | Worker 1 / Worker 2 | Backend | `{"presa_id","power_w","voltage_v","current_a","sample_count","timestamp_start","timestamp_end"}` | Dato ottimizzato pubblicato dal worker |
 | `home/system/healthcheck` | Backend (admin) | Load balancer, Worker 1, Worker 2 | `{}` | Richiesta di stato; rispondono tutti e tre |
 | `home/system/healthcheck/response` | Load balancer, Worker 1, Worker 2 | Backend | `{"componente":"esp32_load_balancer","stato":"ok"}` | `componente` ∈ `{esp32_load_balancer, esp32_worker1, esp32_worker2}` |
-| `home/system/flush` | Backend (admin) | Worker 1, Worker 2 | `{}` | Svuota la coda di ritentativo pendente — solo i worker rispondono, non il load balancer |
+| `home/system/flush` | Backend (admin) | Worker 1, Worker 2 | `{}` | Svuota la coda di ritentativo pendente; solo i worker rispondono, non il load balancer |
 
-Autenticazione MQTT obbligatoria — tutti e 3 i client si connettono con `MQTT_USER`/`MQTT_PASS`. Client ID: `esp32-load-balancer`, `esp32-worker1`, `esp32-worker2`.
+Autenticazione MQTT obbligatoria: tutti e 3 i client si connettono con `MQTT_USER`/`MQTT_PASS`. Client ID: `esp32-load-balancer`, `esp32-worker1`, `esp32-worker2`.
 
 ### Come testarlo in isolamento
 
@@ -107,15 +107,15 @@ mosquitto_pub -h 192.168.1.178 -t "home/presa1/raw" \
   -m '{"deviceId":"presa1","timestamp":1784471181.5,"power":11.3,"voltage":225.1,"current":0.084}'
 ```
 
-Sequenza consigliata: flash load balancer → verifica routing su `home/lb/worker1/raw` e `home/lb/worker2/raw` → flash worker1 → verifica `home/presa1/optimized` → flash worker2 → ripeti.
+Sequenza consigliata: flash del load balancer → verifica del routing su `home/lb/worker1/raw` e `home/lb/worker2/raw` → flash di worker1 → verifica di `home/presa1/optimized` → flash di worker2 → ripetizione.
 
 ### Note e limiti noti
 
 - **Load balancer statico**: 2 worker fissi, nessuna registrazione dinamica di nuovi elaboratori (hardware fisso a 2 elaboratori).
-- **Coda di ritentativo solo in RAM**: non sopravvive a un power loss dell'ESP32 (limite dichiarato esplicitamente, non risolto per rapporto costo/beneficio).
+- **Coda di ritentativo solo in RAM**: non sopravvive a un power loss dell'ESP32, limite dichiarato esplicitamente e lasciato in questo stato per rapporto costo/beneficio.
 - **QoS 0 reale, non QoS 1/2 da protocollo**: per una garanzia di consegna conforme allo standard MQTT servirebbe cambiare libreria (es. `espMqttClient`, che supporta QoS 1/2 reali).
 - Timestamp gestito come `double`, non `float`, per non perdere precisione a livello di secondi su epoch UTC.
-- Filtro debounce a un campione: un campione fuori soglia non chiude subito il gruppo, resta "sospetto" finché il campione successivo lo conferma o lo smentisce — rileva solo anomalie isolate a un singolo campione.
+- Filtro debounce a un campione: un campione fuori soglia non chiude subito il gruppo, resta "sospetto" finché il campione successivo lo conferma o lo smentisce. Rileva solo anomalie isolate a un singolo campione.
 
 ---
 
@@ -123,7 +123,7 @@ Sequenza consigliata: flash load balancer → verifica routing su `home/lb/worke
 
 ### Description
 
-The **load balancer** receives the raw data published by the gateway (subscribing to `home/+/raw`) and routes it to one of the 2 **workers**, computing a hash on the incoming MQTT topic and routing based on its parity (even/odd): the same plug is therefore always routed to the same worker, not a per-message round-robin. Each **worker** groups similar readings within a tolerance, discards isolated noise/errors, and publishes the optimized reading later consumed by the backend. The three ESP32 boards communicate only via WiFi + MQTT — no physical link between them, except during flashing/debugging over USB.
+The **load balancer** receives the raw data published by the gateway (subscribing to `home/+/raw`) and routes it to one of the 2 **workers**, computing a hash on the incoming MQTT topic and routing based on its parity (even/odd): the same plug is therefore always routed to the same worker, not a per-message round-robin. Each **worker** groups similar readings within a tolerance, discards isolated noise/errors, and publishes the optimized reading later consumed by the backend. The three ESP32 boards communicate only via WiFi + MQTT, with no physical link between them except during flashing/debugging over USB.
 
 ### System requirements
 
@@ -131,9 +131,9 @@ The **load balancer** receives the raw data published by the gateway (subscribin
 - "esp32 by Espressif Systems" board package, from Boards Manager: `https://espressif.github.io/arduino-esp32/package_esp32_index.json`
 - Selected board: "ESP32 Dev Module"
 - Libraries (Library Manager):
-  - `PubSubClient` (Nick O'Leary) — known limitation: only supports QoS 0 on publish (no real protocol-level retransmission/ack)
-  - `ArduinoJson` ≥ 7.0 (Benoit Blanchon) — uses the `JsonDocument` API, not the old v6 `StaticJsonDocument<N>`
-- The correct USB-serial driver for your board (CP2102/CP2104 → Silicon Labs; CH340/CH9102 → WCH)
+  - `PubSubClient` (Nick O'Leary): only supports QoS 0 on publish, no real protocol-level retransmission/ack
+  - `ArduinoJson` ≥ 7.0 (Benoit Blanchon): uses the `JsonDocument` API, not the old v6 `StaticJsonDocument<N>`
+- The correct USB-serial driver for your board (CP2102/CP2104: Silicon Labs; CH340/CH9102: WCH)
 - **Recommended** dedicated power supply for each ESP32: a shared passive USB hub can cause brownout/reset (`POWERON_RESET`, `RTCWDT_RTC_RESET`) from WiFi current spikes (~400-500mA)
 
 ### Setup
@@ -163,9 +163,9 @@ esp32/
 ├── load_balancer/
 │   ├── load_balancer.ino
 │   ├── config.h
-│   │   # non-sensitive, versioned — LED handling specific to the load balancer
+│   │   # non-sensitive, versioned; LED handling specific to the load balancer
 │   ├── secrets.h
-│   │   # WiFi + MQTT credentials — NOT versioned
+│   │   # WiFi + MQTT credentials, NOT versioned
 │   ├── secrets.h.example
 │   │   # versioned template
 ├── worker1/
@@ -209,9 +209,9 @@ The effective grouping threshold is computed as `max(SOGLIA_ASSOLUTA_W, referenc
 | `home/<presa_id>/optimized` | Worker 1 / Worker 2 | Backend | `{"presa_id","power_w","voltage_v","current_a","sample_count","timestamp_start","timestamp_end"}` | Optimized reading published by the worker |
 | `home/system/healthcheck` | Backend (admin) | Load balancer, Worker 1, Worker 2 | `{}` | Status request; all three respond |
 | `home/system/healthcheck/response` | Load balancer, Worker 1, Worker 2 | Backend | `{"componente":"esp32_load_balancer","stato":"ok"}` | `componente` ∈ `{esp32_load_balancer, esp32_worker1, esp32_worker2}` |
-| `home/system/flush` | Backend (admin) | Worker 1, Worker 2 | `{}` | Empties the pending retry queue — only the workers respond, not the load balancer |
+| `home/system/flush` | Backend (admin) | Worker 1, Worker 2 | `{}` | Empties the pending retry queue; only the workers respond, not the load balancer |
 
-MQTT authentication is mandatory — all 3 clients connect with `MQTT_USER`/`MQTT_PASS`. Client IDs: `esp32-load-balancer`, `esp32-worker1`, `esp32-worker2`.
+MQTT authentication is mandatory: all 3 clients connect with `MQTT_USER`/`MQTT_PASS`. Client IDs: `esp32-load-balancer`, `esp32-worker1`, `esp32-worker2`.
 
 ### How to test it in isolation
 
@@ -229,7 +229,7 @@ Suggested sequence: flash the load balancer → verify routing on `home/lb/worke
 ### Notes and known limitations
 
 - **Static load balancer**: 2 fixed workers, no dynamic registration of additional processors (fixed hardware with 2 processors).
-- **RAM-only retry queue**: does not survive an ESP32 power loss (an explicitly stated, unresolved limitation, not worth fixing given the cost/benefit).
+- **RAM-only retry queue**: does not survive an ESP32 power loss, an explicitly stated limitation left in this state given the cost/benefit ratio.
 - **Real QoS 0, not protocol-level QoS 1/2**: a standard-compliant MQTT delivery guarantee would require switching library (e.g. `espMqttClient`, which supports real QoS 1/2).
 - Timestamps are handled as `double`, not `float`, to avoid losing second-level precision on UTC epoch values.
-- Single-sample debounce filter: a sample outside the threshold does not immediately close the group — it stays "suspect" until the next sample confirms it or refutes it — only detects single-sample anomalies.
+- Single-sample debounce filter: a sample outside the threshold does not immediately close the group, it stays "suspect" until the next sample confirms it or refutes it. Only detects single-sample anomalies.

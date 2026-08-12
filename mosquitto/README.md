@@ -11,7 +11,7 @@ Punto di scambio intermedio tra tutti i componenti del sistema (gateway, ESP32, 
 ### Requisiti
 
 - Docker + plugin Docker Compose
-- Immagine ufficiale `eclipse-mosquitto:2` — usata as-is, nessun Dockerfile custom
+- Immagine ufficiale `eclipse-mosquitto:2`, usata così com'è, nessun Dockerfile custom
 - Autenticazione obbligatoria (`allow_anonymous false`): richiede un file di password generato a mano (vedi Setup)
 
 ### Setup
@@ -24,7 +24,7 @@ docker run --rm -it \
   eclipse-mosquitto:2 \
   -c /mosquitto/config/passwordfile <username>
 ```
-`-c` crea/sovrascrive il file — usarlo solo la prima volta; per utenti aggiuntivi, stesso comando senza `-c`.
+`-c` crea o sovrascrive il file: usarlo solo la prima volta; per utenti aggiuntivi, stesso comando senza `-c`.
 
 **Permessi** (l'utente interno del container ha uid/gid `1883`):
 ```bash
@@ -33,7 +33,7 @@ sudo chmod 0700 config/passwordfile
 sudo chown -R 1883:1883 data log
 ```
 
-Le stesse credenziali (`MQTT_USER`/`MQTT_PASSWORD`) vanno impostate in tre punti coerenti: `.env` di root, `gateway/config/.env`, `esp32/*/secrets.h` — vedi [README di root](../README.md).
+Le stesse credenziali (`MQTT_USER`/`MQTT_PASSWORD`) vanno impostate in tre punti coerenti: `.env` di root, `gateway/config/.env`, `esp32/*/secrets.h`. Vedi il [README di root](../README.md).
 
 ### Come eseguirlo
 
@@ -49,18 +49,14 @@ Nessun comando di build: immagine ufficiale, nessuna compilazione.
 
 ```
 mosquitto/
-├── config/
-│   ├── mosquitto.conf
-│   │   # tracciato — nessun segreto
-│   ├── passwordfile
-│   │   # NON tracciato — hash credenziali MQTT
-├── data/
-│   # NON tracciato — persistenza broker (mosquitto.db)
-└── log/
-    # NON tracciato — log broker
+└── config/
+    ├── mosquitto.conf
+    │   # tracciato, nessun segreto
+    └── passwordfile
+        # non tracciato, hash delle credenziali MQTT
 ```
 
-`persistence true` è attivo in `mosquitto.conf`.
+`data/` e `log/` non sono tracciati e vengono creati a runtime dal container per la persistenza del broker (`mosquitto.db`) e per i suoi log. `persistence true` è attivo in `mosquitto.conf`.
 
 ### Flusso dati e topic MQTT
 
@@ -94,8 +90,8 @@ docker exec -it mosquitto mosquitto_pub -t "home/presa1/raw" \
 ### Note e limiti noti
 
 - Impostare le credenziali come variabili d'ambiente del container Docker (fatto nel compose) **non crea da sola** l'utente sul broker: serve sempre il passo `mosquitto_passwd`.
-- Nessun ACL per-topic configurato/verificato — vedi sopra.
-- Dati persistiti su hard disk esterno (non sulla scheda SD del Raspberry) — vedi [`systemd/README.md`](../systemd/README.md) e il [README di root](../README.md) per il setup del mount.
+- Nessun ACL per-topic configurato o verificato, vedi sopra.
+- Dati persistiti su hard disk esterno, non sulla scheda SD del Raspberry. Vedi [`systemd/README.md`](../systemd/README.md) e il [README di root](../README.md) per il setup del mount.
 
 ---
 
@@ -108,7 +104,7 @@ Intermediate exchange point between all the system's components (gateway, ESP32,
 ### Requirements
 
 - Docker + Docker Compose plugin
-- Official `eclipse-mosquitto:2` image — used as-is, no custom Dockerfile
+- Official `eclipse-mosquitto:2` image, used as is, no custom Dockerfile
 - Authentication is mandatory (`allow_anonymous false`): requires a manually generated password file (see Setup)
 
 ### Setup
@@ -121,7 +117,7 @@ docker run --rm -it \
   eclipse-mosquitto:2 \
   -c /mosquitto/config/passwordfile <username>
 ```
-`-c` creates/overwrites the file — use it only the first time; for additional users, run the same command without `-c`.
+`-c` creates or overwrites the file: use it only the first time; for additional users, run the same command without `-c`.
 
 **Permissions** (the container's internal user has uid/gid `1883`):
 ```bash
@@ -130,7 +126,7 @@ sudo chmod 0700 config/passwordfile
 sudo chown -R 1883:1883 data log
 ```
 
-The same credentials (`MQTT_USER`/`MQTT_PASSWORD`) must be set consistently in three places: the root `.env`, `gateway/config/.env`, and `esp32/*/secrets.h` — see the [root README](../README.md).
+The same credentials (`MQTT_USER`/`MQTT_PASSWORD`) must be set consistently in three places: the root `.env`, `gateway/config/.env`, and `esp32/*/secrets.h`. See the [root README](../README.md).
 
 ### How to run it
 
@@ -146,18 +142,14 @@ No build step: official image, nothing to compile.
 
 ```
 mosquitto/
-├── config/
-│   ├── mosquitto.conf
-│   │   # tracked — no secrets
-│   ├── passwordfile
-│   │   # NOT tracked — MQTT credential hashes
-├── data/
-│   # NOT tracked — broker persistence (mosquitto.db)
-└── log/
-    # NOT tracked — broker logs
+└── config/
+    ├── mosquitto.conf
+    │   # tracked, no secrets
+    └── passwordfile
+        # not tracked, MQTT credential hashes
 ```
 
-`persistence true` is enabled in `mosquitto.conf`.
+`data/` and `log/` are not tracked and are created at runtime by the container for the broker's persistence (`mosquitto.db`) and its logs. `persistence true` is enabled in `mosquitto.conf`.
 
 ### Data flow and MQTT topics
 
@@ -174,7 +166,7 @@ Every topic in the system passes through this broker. Full table:
 | `home/system/healthcheck/response` | Gateway, Load balancer, Worker 1, Worker 2 | Backend | `{"componente":"gateway","stato":"ok"}` | Individual response from each component to the healthcheck request |
 | `home/system/flush` | Backend (admin) | Worker 1, Worker 2 | `{}` | Request to empty the retry queue of pending `optimized` messages (workers only) |
 
-No per-topic ACL is configured: an authenticated client can subscribe/publish to any topic — the only access control is at the connection level (username/password).
+No per-topic ACL is configured: an authenticated client can subscribe/publish to any topic, the only access control is at the connection level (username/password).
 
 ### How to test it in isolation
 
@@ -191,5 +183,5 @@ docker exec -it mosquitto mosquitto_pub -t "home/presa1/raw" \
 ### Notes and known limitations
 
 - Setting credentials as Docker environment variables (already done in the compose file) does **not** create the broker user by itself: the `mosquitto_passwd` step is always required.
-- No per-topic ACL configured/verified — see above.
-- Data is persisted on the external hard disk (not on the Raspberry Pi's SD card) — see [`systemd/README.md`](../systemd/README.md) and the [root README](../README.md) for the mount setup.
+- No per-topic ACL configured or verified, see above.
+- Data is persisted on the external hard disk, not on the Raspberry Pi's SD card. See [`systemd/README.md`](../systemd/README.md) and the [root README](../README.md) for the mount setup.

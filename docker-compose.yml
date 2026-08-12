@@ -96,6 +96,8 @@ services:
       BACKEND_URL: http://backend:3000
     depends_on:
       - backend
+    volumes:
+      - ./prophet/output:/app/output # Necessario SOLO per evaluation/genera_grafico.py
 
 networks:
   default:

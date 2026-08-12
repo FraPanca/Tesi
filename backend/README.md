@@ -8,6 +8,8 @@ API REST + WebSocket del sistema, in Node.js/Express. Parte del progetto [IoT Ho
 
 Sottoscrive i dati ottimizzati pubblicati via MQTT dagli ESP32 sul topic `home/<presa>/optimized`, li persiste su MongoDB con cache Redis, e li espone al frontend tramite REST API e WebSocket (Socket.IO). Pubblica inoltre sul broker i comandi diretti agli altri componenti: i comandi on/off sul topic `home/<deviceId>/commands` (eseguiti dal gateway), le richieste di healthcheck su `home/system/healthcheck` (a cui rispondono gateway ed ESP32 sottoscrivendo `home/system/healthcheck/response`) e le richieste di flush della coda di ritentativo verso gli ESP32 su `home/system/flush`. Gestisce inoltre l'autenticazione dell'amministratore (JWT) e il logging di sistema con endpoint dedicato.
 
+Espone anche le previsioni dei consumi prodotte dal modulo [Prophet](../prophet/README.md) (`/api/previsioni`, scritte solo da Prophet, lette dal frontend) e un endpoint di logging non autenticato (`POST /api/logs`) usato da componenti esterni non autenticati, oggi solo Prophet, per segnalare fallimenti. Vedi "API previsioni e logging esterno" sotto per il contratto esatto.
+
 Architettura a layer: `routes` → `controllers` → `services` → `repositories`, con un client MQTT unico condiviso e un middleware di autenticazione (`verifyToken`) montato sulle rotte admin.
 
 ### Requisiti / versioni
@@ -41,7 +43,7 @@ CommonJS puro, nessun transpiler/bundler.
 
 Due file `.env` distinti, **non intercambiabili**:
 
-**`backend/.env`** — serve esclusivamente per l'esecuzione locale (`npm run dev`, fuori Docker): è l'opposto del `.env` nella root, che è invece quello effettivamente letto da `docker-compose.yml` e usato in produzione. Il container backend **non legge mai** `backend/.env`.
+**`backend/.env`**: serve esclusivamente per l'esecuzione locale (`npm run dev`, fuori Docker), è l'opposto del `.env` nella root, che è invece quello effettivamente letto da `docker-compose.yml` e usato in produzione. Il container backend **non legge mai** `backend/.env`.
 
 ```dotenv
 PORT=3000
@@ -89,7 +91,7 @@ docker compose logs -f backend
 
 Sequenza di avvio attesa nei log: `[MongoDB] connesso` → `[Redis] connesso` → `[MQTT] connesso al broker` → `[Server] in ascolto sulla porta 3000`. Il servizio dipende da `mongodb`/`redis`/`mosquitto` (`condition: service_healthy`): non si avvia prima che siano pronti.
 
-Il `Dockerfile` copia prima solo `package*.json` ed esegue `npm ci --omit=dev`, poi copia il resto del codice — mantiene il layer delle dipendenze in cache Docker.
+Il `Dockerfile` copia prima solo `package*.json` ed esegue `npm ci --omit=dev`, poi copia il resto del codice: mantiene così il layer delle dipendenze in cache Docker.
 
 ### Struttura interna
 
@@ -116,7 +118,8 @@ backend/
 │   │   ├── comandoController.js
 │   │   ├── consumoController.js
 │   │   ├── logController.js
-│   │   └── presaController.js
+│   │   ├── presaController.js
+│   │   └── previsioneController.js
 │   ├── middleware/
 │   │   ├── auth.js
 │   │   │   # verifyToken
@@ -129,7 +132,7 @@ backend/
 │   │   │   # collezione "logs", TTL index 30 giorni
 │   │   ├── Presa.js
 │   │   └── Previsione.js
-│   │       # pronto, non ancora esposto
+│   │       # generatoIl, orizzonte, valoriPrevisti[], metriche?/suggerimenti?/anomalie?, vedi sotto
 │   ├── mqtt/
 │   │   └── client.js
 │   │       # client MQTT unico: subscribe optimized/healthcheck-response,
@@ -137,15 +140,18 @@ backend/
 │   ├── repositories/
 │   │   ├── consumoRepository.js
 │   │   ├── logRepository.js
-│   │   └── presaRepository.js
+│   │   ├── presaRepository.js
+│   │   └── previsioneRepository.js
 │   ├── routes/
 │   │   ├── adminRoutes.js
 │   │   ├── authRoutes.js
 │   │   │   # POST /api/auth/login
 │   │   ├── consumoRoutes.js
 │   │   ├── logRoutes.js
-│   │   │   # GET /api/logs
-│   │   └── presaRoutes.js
+│   │   │   # GET /api/logs (JWT), POST /api/logs (non autenticata)
+│   │   ├── presaRoutes.js
+│   │   └── previsioneRoutes.js
+│   │       # POST /api/previsioni/:presaId, GET /api/previsioni/:presaId/ultima, nessuna JWT
 │   ├── services/
 │   │   ├── adminService.js
 │   │   │   # flush/healthcheck
@@ -157,7 +163,8 @@ backend/
 │   │   │   # logica consumi + cache Redis
 │   │   ├── logService.js
 │   │   │   # validazione filtri di GET /api/logs
-│   │   └── presaService.js
+│   │   ├── presaService.js
+│   │   └── previsioneService.js
 │   ├── utils/
 │   │   └── retry.js
 │   │       # retry generico con backoff esponenziale
@@ -177,9 +184,35 @@ backend/
     │       ├── comandoService.test.js
     │       ├── presaService.test.js
     │       ├── authService.test.js
-    │       └── logService.test.js
+    │       ├── logService.test.js
+    │       └── PrevisioneService.test.js
     └── integration/
         └── app.test.js
+```
+
+### API previsioni e logging esterno
+
+Due rotte pensate per l'integrazione con [Prophet](../prophet/README.md), **nessuna delle due richiede JWT** (stesso trattamento di `/api/prese`/`/api/consumi`):
+
+| Rotta | Chi la usa | Note |
+|---|---|---|
+| `POST /api/previsioni/:presaId` | Scritta solo da Prophet | Ogni chiamata crea un **nuovo documento**, mai un update-in-place: lo storico delle previsioni si accumula. `presaId` preso solo dal path, un eventuale `presaId` nel body è ignorato. Corpo: `orizzonte.da`/`orizzonte.a`, `valoriPrevisti[]` (`ds`, `yhat`, `yhatLower?`, `yhatUpper?`); `metriche?`/`suggerimenti?`/`anomalie?` opzionali |
+| `GET /api/previsioni/:presaId/ultima` | Letta dal frontend | Previsione più recente per la presa (ordinata su `generatoIl`). 404 se non esiste nulla, stesso esito anche per un `presaId` mai registrato: nessun controllo di esistenza presa separato |
+| `POST /api/logs` | Componenti esterni non autenticati (oggi solo Prophet) | Per segnalare fallimenti senza scrivere dati fittizi altrove (es. `evento: "prophet.forecast_fallito"`). `origine` è **sempre forzato a `'sistema'`** lato server: un valore diverso nel body viene ignorato |
+
+**Vincolo di formato importante**: ogni data nel body di `POST /api/previsioni/:presaId` (`orizzonte.da`, `orizzonte.a`, ogni `valoriPrevisti[].ds`, ogni `anomalie[].ds`) **deve avere timezone esplicito** (`Z` o offset `±HH:MM`): il backend rifiuta con 400 una stringa "naive" (es. `"2026-08-11 14:00:00"`, il formato nativo di pandas/Prophet senza timezone). Non è un dettaglio implementativo minore: una data senza timezone esplicito viene interpretata in modo diverso a seconda del fuso orario del server che la genera (uno scarto di due ore è stato osservato fra un server UTC e uno Europe/Rome sullo stesso identico input).
+
+In lettura (`GET`), tutte le date nella risposta sono **sempre** ISO 8601 con `Z` (UTC): comportamento nativo di JavaScript sulla serializzazione di un `Date`, utile da annotare per chi consuma l'API (es. il frontend).
+
+Schema `Previsione` completo:
+```
+presaId: String (obbligatorio)
+generatoIl: Date (default: adesso)
+orizzonte: { da: Date, a: Date } (obbligatori)
+valoriPrevisti: [{ ds: Date, yhat: Number, yhatLower?: Number, yhatUpper?: Number }]
+metriche?: { mae?: Number, rmse?: Number, baselineConfronto?: String }  // solo valutazione offline
+suggerimenti?: [String]                    // sempre presente come array, [] se assente dal body
+anomalie?: [{ ds: Date, y: Number, punteggio: Number }]  // sempre presente come array, [] se assente dal body
 ```
 
 ### Come testarlo
@@ -208,9 +241,9 @@ npx jest <path-al-file>     # un singolo file
 npm run test:watch          # riesecuzione automatica
 ```
 
-Non serve nessun `.env` reale né MongoDB/Redis/MQTT attivi: tutto lo strato esterno è mockato (repository Mongo/Redis, client MQTT, modello `Log`), lasciando reale tutta la logica applicativa — il test di integrazione fa lo stesso a livello di intera applicazione HTTP. Le uniche variabili d'ambiente necessarie (`JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`) sono impostate direttamente nei file di test che ne hanno bisogno.
+Non serve nessun `.env` reale né MongoDB/Redis/MQTT attivi: tutto lo strato esterno è mockato (repository Mongo/Redis, client MQTT, modello `Log`), lasciando reale tutta la logica applicativa; il test di integrazione fa lo stesso a livello di intera applicazione HTTP. Le uniche variabili d'ambiente necessarie (`JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`) sono impostate direttamente nei file di test che ne hanno bisogno.
 
-**Risultato attuale:** 9 suite, 62 test, tutti verdi.
+**Risultato attuale:** 101 test, tutti verdi.
 
 | File | N. test | Cosa verifica |
 |---|---|---|
@@ -224,7 +257,7 @@ Non serve nessun `.env` reale né MongoDB/Redis/MQTT attivi: tutto lo strato est
 | `services/logService.test.js` | 5 | Validazione filtri di ricerca log |
 | `integration/app.test.js` | 9 | Routing reale + controller + service + gestore errori + middleware auth, end-to-end via supertest |
 
-Copertura funzionale dei percorsi critici e dei contratti tra componenti, non esaustiva — coerente con la priorità di progetto data al sistema end-to-end e al modulo Prophet; il testing resta a un livello funzionale.
+Copertura funzionale dei percorsi critici e dei contratti tra componenti, non esaustiva.
 
 #### Verifica manuale
 
@@ -254,9 +287,10 @@ curl "http://localhost:3000/api/logs?livello=error&limite=20" -H "Authorization:
 ### Note e limiti noti
 
 - HTTPS scartato per scelta: il traffico remoto passa da Tailscale, cifrato a livello WireGuard.
-- Un solo amministratore con credenziali fisse in `.env`: nessun ruolo separato, nessuna registrazione, nessun refresh token — possedere un token valido implica essere l'admin.
-- `presaService.js`: la scrittura su MongoDB avviene prima della registrazione/rimozione MQTT del dispositivo — se la pubblicazione fallisce dopo i retry, la presa resta creata/rimossa in Mongo senza che il gateway lo sappia (nessun rollback implementato).
+- Un solo amministratore con credenziali fisse in `.env`: nessun ruolo separato, nessuna registrazione, nessun refresh token. Possedere un token valido implica essere l'admin.
+- `presaService.js`: la scrittura su MongoDB avviene prima della registrazione/rimozione MQTT del dispositivo. Se la pubblicazione fallisce dopo i retry, la presa resta creata/rimossa in Mongo senza che il gateway lo sappia (nessun rollback implementato).
 - `adminService.js`: un fallimento di pubblicazione dopo i retry su flush/healthcheck è indistinguibile lato HTTP da "nessuna risposta in tempo".
+- Il payload MQTT `optimized` include anche un campo `valore_singolo` (booleano, distingue un placeholder temporaneo pubblicato dagli ESP32 da un aggregato consolidato). **Il backend lo ignora completamente**: ogni valore ricevuto, incluso quello singolo, viene persistito come dato normale e mai rimosso, senza campo di schema dedicato né esposizione all'API. Scelta deliberata, dopo aver valutato e scartato sia un campo di schema sia una struttura in memoria per tracciare e rimuovere i placeholder.
 
 ---
 
@@ -265,6 +299,8 @@ curl "http://localhost:3000/api/logs?livello=error&limite=20" -H "Authorization:
 ### Description
 
 Subscribes to the optimized data published over MQTT by the ESP32 boards on the topic `home/<plug>/optimized`, persists it to MongoDB with a Redis cache, and exposes it to the frontend via REST API and WebSocket (Socket.IO). It also publishes commands directed at the other components: on/off commands on the `home/<deviceId>/commands` topic (executed by the gateway), healthcheck requests on `home/system/healthcheck` (answered by the gateway and the ESP32 boards subscribing to `home/system/healthcheck/response`), and requests to flush the retry queue on the ESP32 boards over `home/system/flush`. It also handles administrator authentication (JWT) and system logging with a dedicated endpoint.
+
+It also exposes the consumption forecasts produced by the [Prophet](../prophet/README.md) module (`/api/previsioni`, written only by Prophet, read by the frontend) and an unauthenticated logging endpoint (`POST /api/logs`) used by unauthenticated external components, today only Prophet, to report failures. See "Forecast API and external logging" below for the exact contract.
 
 Layered architecture: `routes` → `controllers` → `services` → `repositories`, with a single shared MQTT client and an authentication middleware (`verifyToken`) mounted on the admin routes.
 
@@ -299,7 +335,7 @@ Plain CommonJS, no transpiler/bundler.
 
 Two distinct `.env` files, **not interchangeable**:
 
-**`backend/.env`** — used exclusively for local execution (`npm run dev`, outside Docker): it is the opposite of the root `.env`, which is the one actually read by `docker-compose.yml` and used in production. The backend container **never reads** `backend/.env`.
+**`backend/.env`**: used exclusively for local execution (`npm run dev`, outside Docker), the opposite of the root `.env`, which is the one actually read by `docker-compose.yml` and used in production. The backend container **never reads** `backend/.env`.
 
 ```dotenv
 PORT=3000
@@ -347,7 +383,7 @@ docker compose logs -f backend
 
 Expected startup sequence in the logs: `[MongoDB] connesso` → `[Redis] connesso` → `[MQTT] connesso al broker` → `[Server] in ascolto sulla porta 3000`. The service depends on `mongodb`/`redis`/`mosquitto` (`condition: service_healthy`) and won't start before they are ready.
 
-The `Dockerfile` first copies only `package*.json` and runs `npm ci --omit=dev`, then copies the rest of the code — this keeps the dependency layer cached by Docker.
+The `Dockerfile` first copies only `package*.json` and runs `npm ci --omit=dev`, then copies the rest of the code: this keeps the dependency layer cached by Docker.
 
 ### Internal structure
 
@@ -374,7 +410,8 @@ backend/
 │   │   ├── comandoController.js
 │   │   ├── consumoController.js
 │   │   ├── logController.js
-│   │   └── presaController.js
+│   │   ├── presaController.js
+│   │   └── previsioneController.js
 │   ├── middleware/
 │   │   ├── auth.js
 │   │   │   # verifyToken
@@ -387,7 +424,7 @@ backend/
 │   │   │   # "logs" collection, 30-day TTL index
 │   │   ├── Presa.js
 │   │   └── Previsione.js
-│   │       # ready, not exposed yet
+│   │       # generatoIl, orizzonte, valoriPrevisti[], metriche?/suggerimenti?/anomalie?, see below
 │   ├── mqtt/
 │   │   └── client.js
 │   │       # single MQTT client: subscribes to optimized/healthcheck-response,
@@ -395,15 +432,18 @@ backend/
 │   ├── repositories/
 │   │   ├── consumoRepository.js
 │   │   ├── logRepository.js
-│   │   └── presaRepository.js
+│   │   ├── presaRepository.js
+│   │   └── previsioneRepository.js
 │   ├── routes/
 │   │   ├── adminRoutes.js
 │   │   ├── authRoutes.js
 │   │   │   # POST /api/auth/login
 │   │   ├── consumoRoutes.js
 │   │   ├── logRoutes.js
-│   │   │   # GET /api/logs
-│   │   └── presaRoutes.js
+│   │   │   # GET /api/logs (JWT), POST /api/logs (unauthenticated)
+│   │   ├── presaRoutes.js
+│   │   └── previsioneRoutes.js
+│   │       # POST /api/previsioni/:presaId, GET /api/previsioni/:presaId/ultima, no JWT
 │   ├── services/
 │   │   ├── adminService.js
 │   │   │   # flush/healthcheck
@@ -415,7 +455,8 @@ backend/
 │   │   │   # consumption logic + Redis cache
 │   │   ├── logService.js
 │   │   │   # validates GET /api/logs filters
-│   │   └── presaService.js
+│   │   ├── presaService.js
+│   │   └── previsioneService.js
 │   ├── utils/
 │   │   └── retry.js
 │   │       # generic exponential-backoff retry
@@ -435,9 +476,35 @@ backend/
     │       ├── comandoService.test.js
     │       ├── presaService.test.js
     │       ├── authService.test.js
-    │       └── logService.test.js
+    │       ├── logService.test.js
+    │       └── PrevisioneService.test.js
     └── integration/
         └── app.test.js
+```
+
+### Forecast API and external logging
+
+Two routes built for integration with [Prophet](../prophet/README.md), **neither requires JWT** (same treatment as `/api/prese`/`/api/consumi`):
+
+| Route | Used by | Notes |
+|---|---|---|
+| `POST /api/previsioni/:presaId` | Written only by Prophet | Every call creates a **new document**, never an in-place update: the forecast history accumulates. `presaId` is taken only from the path, any `presaId` in the body is ignored. Body: `orizzonte.da`/`orizzonte.a`, `valoriPrevisti[]` (`ds`, `yhat`, `yhatLower?`, `yhatUpper?`); `metriche?`/`suggerimenti?`/`anomalie?` optional |
+| `GET /api/previsioni/:presaId/ultima` | Read by the frontend | Most recent forecast for the plug (ordered by `generatoIl`). 404 if none exists, same outcome for a `presaId` that was never registered: there's no separate plug-existence check |
+| `POST /api/logs` | Unauthenticated external components (today only Prophet) | Reports failures without writing fake data elsewhere (e.g. `evento: "prophet.forecast_fallito"`). `origine` is **always forced to `'sistema'`** server-side: a different value in the body is ignored |
+
+**Important format constraint**: every date in the `POST /api/previsioni/:presaId` body (`orizzonte.da`, `orizzonte.a`, every `valoriPrevisti[].ds`, every `anomalie[].ds`) **must have an explicit timezone** (`Z` or `±HH:MM` offset): the backend rejects a "naive" string (e.g. `"2026-08-11 14:00:00"`, pandas/Prophet's native tz-less format) with a 400. This isn't a minor implementation detail: a date without an explicit timezone is interpreted differently depending on the timezone of the server generating it (a two-hour discrepancy was observed between a UTC server and a Europe/Rome one on the exact same input).
+
+On reads (`GET`), every date in the response is **always** ISO 8601 with `Z` (UTC): JavaScript's native behavior when serializing a `Date`, worth noting for anyone consuming the API (e.g. the frontend).
+
+Full `Previsione` schema:
+```
+presaId: String (required)
+generatoIl: Date (default: now)
+orizzonte: { da: Date, a: Date } (required)
+valoriPrevisti: [{ ds: Date, yhat: Number, yhatLower?: Number, yhatUpper?: Number }]
+metriche?: { mae?: Number, rmse?: Number, baselineConfronto?: String }  // offline evaluation only
+suggerimenti?: [String]                    // always present as an array, [] if absent from the body
+anomalie?: [{ ds: Date, y: Number, punteggio: Number }]  // always present as an array, [] if absent from the body
 ```
 
 ### How to test it
@@ -466,9 +533,9 @@ npx jest <path-to-file>     # a single file
 npm run test:watch          # auto re-run
 ```
 
-No real `.env` or a running MongoDB/Redis/MQTT is needed: the entire external layer is mocked (Mongo/Redis repositories, MQTT client, the `Log` model), leaving all the application logic real — the integration test does the same at the whole-HTTP-application level. The only environment variables needed (`JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`) are set directly in the test files that need them.
+No real `.env` or a running MongoDB/Redis/MQTT is needed: the entire external layer is mocked (Mongo/Redis repositories, MQTT client, the `Log` model), leaving all the application logic real; the integration test does the same at the whole-HTTP-application level. The only environment variables needed (`JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`) are set directly in the test files that need them.
 
-**Current result:** 9 suites, 62 tests, all passing.
+**Current result:** 101 tests, all passing.
 
 | File | # tests | What it checks |
 |---|---|---|
@@ -482,7 +549,7 @@ No real `.env` or a running MongoDB/Redis/MQTT is needed: the entire external la
 | `services/logService.test.js` | 5 | Log search filter validation |
 | `integration/app.test.js` | 9 | Real routing + controller + service + error handler + auth middleware, end-to-end via supertest |
 
-Functional coverage of the critical paths and the contracts between components, not exhaustive — consistent with the project's priority given to the end-to-end system and the Prophet module; testing stays at a functional level.
+Functional coverage of the critical paths and the contracts between components, not exhaustive.
 
 #### Manual verification
 
@@ -512,6 +579,7 @@ curl "http://localhost:3000/api/logs?livello=error&limite=20" -H "Authorization:
 ### Notes and known limitations
 
 - HTTPS was deliberately dropped: remote traffic already goes through Tailscale, encrypted at the WireGuard layer.
-- Single administrator with fixed credentials in `.env`: no separate role, no registration, no refresh token — holding a valid token already implies being the admin.
-- `presaService.js`: the MongoDB write happens before the MQTT registration/removal of the device — if the publish fails after retries, the plug stays created/removed in Mongo without the gateway knowing (no rollback implemented).
+- Single administrator with fixed credentials in `.env`: no separate role, no registration, no refresh token. Holding a valid token already implies being the admin.
+- `presaService.js`: the MongoDB write happens before the MQTT registration/removal of the device. If the publish fails after retries, the plug stays created/removed in Mongo without the gateway knowing (no rollback implemented).
 - `adminService.js`: a publish failure after retries on flush/healthcheck is indistinguishable, on the HTTP side, from "no response arrived in time".
+- The MQTT `optimized` payload also includes a `valore_singolo` field (boolean, distinguishes a temporary placeholder published by the ESP32 boards from a consolidated aggregate). **The backend ignores it entirely**: every value received, including the single one, is persisted as a normal reading and never removed, with no dedicated schema field and no API exposure. A deliberate choice, after evaluating and dropping both a schema field and an in-memory structure to track and remove placeholders.

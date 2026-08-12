@@ -10,6 +10,7 @@ mosquitto/config/passwordfile
 # --- Python: virtualenv e bytecode ---
 gateway/venv/
 prophet/venv/
+prophet/.pytest_cache/
 **/__pycache__/
 *.pyc
 *.pyo

@@ -15,7 +15,7 @@ Legge corrente/tensione/potenza dalle prese Tapo P110 ogni `POLLING_INTERVAL` se
 - Python 3.13 (sviluppato in venv su Raspberry Pi 5, architettura aarch64)
 - Un **account Tapo** (TP-Link), lo stesso usato per configurare le prese nell'app: `python-kasa` si autentica al cloud Tapo con queste credenziali, non solo in locale
 - Accesso di rete locale alle prese Tapo P110 (stessa LAN/VLAN), raggiungibili agli IP fissi indicati nel [README di root](../README.md#indirizzi-ip-statici)
-- Il broker MQTT (vedi [`mosquitto/`](../mosquitto/README.md)) deve essere raggiungibile — non richiede backend/frontend attivi
+- Il broker MQTT (vedi [`mosquitto/`](../mosquitto/README.md)) deve essere raggiungibile; non richiede backend/frontend attivi
 
 #### Dipendenze Python (`requirements.txt`)
 
@@ -42,14 +42,14 @@ cp config/.env.example config/.env
 # modificare config/devices.json con ip + id di ogni presa Tapo P110
 ```
 
-Le credenziali del broker vanno create separatamente — vedi [`mosquitto/README.md`](../mosquitto/README.md).
+Le credenziali del broker vanno create separatamente, vedi [`mosquitto/README.md`](../mosquitto/README.md).
 
 ### Variabili d'ambiente (`config/.env`)
 
 | Variabile | Scopo | Note |
 |---|---|---|
 | `TAPO_USERNAME` / `TAPO_PASSWORD` | Login account Tapo (cloud) | stesso account usato nell'app |
-| `MQTT_BROKER` | Host del broker | `localhost` — il gateway è nativo sull'host, il broker è raggiunto via port mapping Docker |
+| `MQTT_BROKER` | Host del broker | `localhost`: il gateway è nativo sull'host, il broker è raggiunto via port mapping Docker |
 | `MQTT_PORT` | Porta broker | `1883` |
 | `MQTT_USER` / `MQTT_PASSWORD` | Credenziali MQTT | devono coincidere col `passwordfile` di mosquitto e col `.env` di root |
 | `POLLING_INTERVAL` | Secondi tra due letture della stessa presa | default `10` |
@@ -74,14 +74,14 @@ Nessun comando di build: componente interamente interpretato (Python), nessuno s
 gateway/
 ├── requirements.txt
 ├── venv/
-│   # non tracciato — va ricreato
+│   # non tracciato, va ricreato
 ├── config/
 │   ├── .env
-│   │   # non tracciato — credenziali reali
+│   │   # non tracciato, credenziali reali
 │   ├── .env.example
-│   │   # tracciato — template
+│   │   # tracciato, template
 │   ├── devices.json
-│   │   # tracciato — mapping ip -> id presa
+│   │   # tracciato, mapping ip -> id presa
 ├── logs/
 │   ├── .gitkeep
 │   ├── presa1.log
@@ -90,24 +90,29 @@ gateway/
 │   ├── warning.log
 │   ├── error.log
 └── src/
+    ├── __init__.py
     ├── config.py
     │   # carica .env, definisce costanti (path, MQTT, intervalli)
     ├── main.py
     │   # entrypoint
     ├── devices/
+    │   ├── __init__.py
     │   ├── device_manager.py
     │   │   # orchestratore: crea/rimuove task asyncio per ogni presa
     │   ├── device_monitor.py
     │   │   # loop per singola presa: polling, backoff, comandi
     ├── mqtt/
+    │   ├── __init__.py
     │   ├── mqtt_publisher.py
     │   │   # client MQTT dedicato al publish
     │   ├── mqtt_subscriber.py
     │   │   # client MQTT dedicato al subscribe (comandi, healthcheck)
     ├── logger/
+    │   ├── __init__.py
     │   ├── energy_logger.py
     │   │   # log rotanti (RotatingFileHandler)
     └── registry/
+        ├── __init__.py
         ├── device_registry.py
         │   # CRUD su devices.json
 ```
@@ -144,10 +149,10 @@ kasa --host <ip> --username <TAPO_USERNAME> --password <TAPO_PASSWORD> discover
 
 ### Note e limiti noti
 
-- Timestamp nel payload `raw`: epoch UTC in secondi (`time.time()`), non ISO 8601 — assunzione implicita che backend e modulo Prophet devono trattare in modo coerente.
-- `deviceId` è un id fisso (`presaN`, in `devices.json`), non l'alias impostato nell'app Tapo — per non rompere la continuità delle serie storiche se l'utente rinomina una presa.
+- Timestamp nel payload `raw`: epoch UTC in secondi (`time.time()`), non ISO 8601. Backend e modulo Prophet devono trattarlo in modo coerente.
+- `deviceId` è un id fisso (`presaN`, in `devices.json`), non l'alias impostato nell'app Tapo: la continuità delle serie storiche non dipende dal fatto che l'utente rinomini una presa.
 - Due client MQTT separati e indipendenti (publish/subscribe): chi estende la logica di risposta a un comando deve importare esplicitamente `mqtt_publisher`.
-- Dispositivi Tapo con schema di crittografia `TPAP` (dopo aggiornamento firmware auto-update) non sono supportati da `python-kasa` (`Unsupported device ... encrypt_type='TPAP'`). Workaround verificato: nell'app Tapo, Me → Third-Party Compatibility → disattivare e riattivare il toggle. Consigliato disattivare gli aggiornamenti firmware automatici sulle prese.
+- Dispositivi Tapo con schema di crittografia `TPAP` (dopo aggiornamento firmware auto-update) non sono supportati da `python-kasa` (`Unsupported device ... encrypt_type='TPAP'`). Il modo per riportarli a uno schema supportato è, nell'app Tapo, disattivare e riattivare il toggle Me → Third-Party Compatibility. Consigliato disattivare gli aggiornamenti firmware automatici sulle prese.
 
 ---
 
@@ -164,7 +169,7 @@ Reads current/voltage/power from the Tapo P110 plugs every `POLLING_INTERVAL` se
 - Python 3.13 (developed in a venv on a Raspberry Pi 5, aarch64 architecture)
 - A **Tapo account** (TP-Link), the same one used to set up the plugs in the app: `python-kasa` authenticates against the Tapo cloud with these credentials, not just locally
 - Local network access to the Tapo P110 plugs (same LAN/VLAN), reachable at the fixed IPs listed in the [root README](../README.md#static-ip-addresses)
-- The MQTT broker (see [`mosquitto/`](../mosquitto/README.md)) must be reachable — no backend/frontend needed
+- The MQTT broker (see [`mosquitto/`](../mosquitto/README.md)) must be reachable; no backend/frontend needed
 
 #### Python dependencies (`requirements.txt`)
 
@@ -191,14 +196,14 @@ cp config/.env.example config/.env
 # edit config/devices.json with the ip + id of each Tapo P110 plug
 ```
 
-Broker credentials must be created separately — see [`mosquitto/README.md`](../mosquitto/README.md).
+Broker credentials must be created separately, see [`mosquitto/README.md`](../mosquitto/README.md).
 
 ### Environment variables (`config/.env`)
 
 | Variable | Purpose | Notes |
 |---|---|---|
 | `TAPO_USERNAME` / `TAPO_PASSWORD` | Tapo (cloud) account login | same account used in the app |
-| `MQTT_BROKER` | Broker host | `localhost` — the gateway runs natively on the host, the broker is reached through Docker port mapping |
+| `MQTT_BROKER` | Broker host | `localhost`: the gateway runs natively on the host, the broker is reached through Docker port mapping |
 | `MQTT_PORT` | Broker port | `1883` |
 | `MQTT_USER` / `MQTT_PASSWORD` | MQTT credentials | must match mosquitto's `passwordfile` and the root `.env` |
 | `POLLING_INTERVAL` | Seconds between two readings of the same plug | default `10` |
@@ -223,14 +228,14 @@ No build step: entirely interpreted (Python), no compilation involved.
 gateway/
 ├── requirements.txt
 ├── venv/
-│   # not tracked — must be recreated
+│   # not tracked, must be recreated
 ├── config/
 │   ├── .env
-│   │   # not tracked — real credentials
+│   │   # not tracked, real credentials
 │   ├── .env.example
-│   │   # tracked — template
+│   │   # tracked, template
 │   ├── devices.json
-│   │   # tracked — ip -> plug id mapping
+│   │   # tracked, ip -> plug id mapping
 ├── logs/
 │   ├── .gitkeep
 │   ├── presa1.log
@@ -239,24 +244,29 @@ gateway/
 │   ├── warning.log
 │   ├── error.log
 └── src/
+    ├── __init__.py
     ├── config.py
     │   # loads .env, defines constants (paths, MQTT, intervals)
     ├── main.py
     │   # entrypoint
     ├── devices/
+    │   ├── __init__.py
     │   ├── device_manager.py
     │   │   # orchestrator: creates/removes an asyncio task per plug
     │   ├── device_monitor.py
     │   │   # per-plug loop: polling, backoff, commands
     ├── mqtt/
+    │   ├── __init__.py
     │   ├── mqtt_publisher.py
     │   │   # MQTT client dedicated to publishing
     │   ├── mqtt_subscriber.py
     │   │   # MQTT client dedicated to subscribing (commands, healthcheck)
     ├── logger/
+    │   ├── __init__.py
     │   ├── energy_logger.py
     │   │   # rotating logs (RotatingFileHandler)
     └── registry/
+        ├── __init__.py
         ├── device_registry.py
         │   # CRUD on devices.json
 ```
@@ -293,7 +303,7 @@ kasa --host <ip> --username <TAPO_USERNAME> --password <TAPO_PASSWORD> discover
 
 ### Notes and known limitations
 
-- Timestamp in the `raw` payload: UTC epoch in seconds (`time.time()`), not ISO 8601 — an implicit assumption that the backend and the Prophet module must handle consistently.
-- `deviceId` is a fixed id (`presaN`, in `devices.json`), not the alias set in the Tapo app — so the historical series stays continuous even if the user renames a plug.
+- Timestamp in the `raw` payload: UTC epoch in seconds (`time.time()`), not ISO 8601. The backend and the Prophet module need to handle it consistently.
+- `deviceId` is a fixed id (`presaN`, in `devices.json`), not the alias set in the Tapo app: the continuity of the historical series doesn't depend on the user renaming a plug.
 - Two separate, independent MQTT clients (publish/subscribe): anyone extending the response logic for an incoming command must explicitly import `mqtt_publisher`.
-- Tapo devices with the `TPAP` encryption scheme (after a firmware auto-update) are not supported by `python-kasa` (`Unsupported device ... encrypt_type='TPAP'`). Verified workaround: in the Tapo app, Me → Third-Party Compatibility → toggle off and back on. Disabling automatic firmware updates on the plugs is recommended.
+- Tapo devices with the `TPAP` encryption scheme (after a firmware auto-update) are not supported by `python-kasa` (`Unsupported device ... encrypt_type='TPAP'`). The way to bring them back to a supported scheme is, in the Tapo app, to toggle Me → Third-Party Compatibility off and back on. Disabling automatic firmware updates on the plugs is recommended.
