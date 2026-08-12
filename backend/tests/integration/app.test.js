@@ -10,6 +10,7 @@ process.env.ADMIN_PASSWORD_HASH = bcrypt.hashSync('password-corretta', 4);
 jest.mock('../../src/repositories/presaRepository');
 jest.mock('../../src/repositories/consumoRepository');
 jest.mock('../../src/repositories/logRepository');
+jest.mock('../../src/repositories/previsioneRepository');
 jest.mock('../../src/models/Log', () => ({ create: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../src/mqtt/client', () => ({
   connettiMqtt: jest.fn(),
@@ -26,6 +27,7 @@ const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const presaRepository = require('../../src/repositories/presaRepository');
 const logRepository = require('../../src/repositories/logRepository');
+const previsioneRepository = require('../../src/repositories/previsioneRepository');
 const { app } = require('../../src/app');
 
 
@@ -110,5 +112,108 @@ describe('integrazione: routing + controller + service + errorHandler', () => {
 
     expect(res.status).toBe(500);
     expect(res.body.errore).toBe('Mongo esploso');
+  });
+
+  describe('POST /api/previsioni/:presaId (nessun verifyToken)', () => {
+    const bodyMinimo = {
+      orizzonte: { da: '2026-08-11T00:00:00Z', a: '2026-08-17T23:00:00Z' },
+      valoriPrevisti: [{ ds: '2026-08-11T00:00:00Z', yhat: 45.2 }],
+    };
+
+    test('risponde 201 SENZA header Authorization (route pubblica, scritta dal servizio Prophet)', async () => {
+      previsioneRepository.crea.mockResolvedValue({ _id: '1', presaId: 'presa1', ...bodyMinimo });
+
+      const res = await request(app).post('/api/previsioni/presa1').send(bodyMinimo);
+
+      expect(res.status).toBe(201);
+    });
+
+    test('risponde 201 anche CON "metriche" nel body (valutazione offline)', async () => {
+      const metriche = { mae: 12.4, rmse: 18.9, baselineConfronto: 'media mobile 7gg' };
+      previsioneRepository.crea.mockResolvedValue({ _id: '1' });
+
+      const res = await request(app)
+        .post('/api/previsioni/presa1')
+        .send({ ...bodyMinimo, metriche });
+
+      expect(res.status).toBe(201);
+      expect(previsioneRepository.crea).toHaveBeenCalledWith(expect.objectContaining({ metriche }));
+    });
+
+    test('un ds ambiguo (naive) risponde 400 nello stesso formato {"errore": "..."} degli altri 400', async () => {
+      const res = await request(app)
+        .post('/api/previsioni/presa1')
+        .send({ ...bodyMinimo, valoriPrevisti: [{ ds: '2026-08-11T14:00:00', yhat: 1 }] });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ errore: expect.stringContaining('valoriPrevisti[0].ds') });
+      expect(previsioneRepository.crea).not.toHaveBeenCalled();
+    });
+
+    test('un presaId nel body viene ignorato: viene salvato quello del path', async () => {
+      previsioneRepository.crea.mockResolvedValue({ _id: '1' });
+
+      await request(app)
+        .post('/api/previsioni/presa-dal-path')
+        .send({ ...bodyMinimo, presaId: 'presa-nel-body' });
+
+      expect(previsioneRepository.crea).toHaveBeenCalledWith(expect.objectContaining({ presaId: 'presa-dal-path' }));
+    });
+  });
+
+  describe('GET /api/previsioni/:presaId/ultima (nessun verifyToken)', () => {
+    test('risponde 200 con la previsione trovata, senza header Authorization', async () => {
+      previsioneRepository.trovaUltimaPerPresa.mockResolvedValue({ _id: '1', presaId: 'presa1' });
+
+      const res = await request(app).get('/api/previsioni/presa1/ultima');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ _id: '1', presaId: 'presa1' });
+    });
+
+    test('risponde 404 con il messaggio esatto se non esiste nessuna previsione per il presaId', async () => {
+      previsioneRepository.trovaUltimaPerPresa.mockResolvedValue(null);
+
+      const res = await request(app).get('/api/previsioni/sconosciuta/ultima');
+
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ errore: 'Nessuna previsione disponibile per questa presa' });
+    });
+  });
+
+  describe('POST /api/logs (nuovo, nessun verifyToken)', () => {
+    test('risponde 201 SENZA header Authorization', async () => {
+      logRepository.crea.mockResolvedValue({ _id: '1' });
+
+      const res = await request(app)
+        .post('/api/logs')
+        .send({ livello: 'error', evento: 'prophet.forecast_fallito', messaggio: 'storico insufficiente' });
+
+      expect(res.status).toBe(201);
+    });
+
+    test('SICUREZZA: un body con origine:"admin" viene comunque salvato con origine:"sistema"', async () => {
+      logRepository.crea.mockResolvedValue({ _id: '1' });
+
+      await request(app)
+        .post('/api/logs')
+        .send({ origine: 'admin', evento: 'x', messaggio: 'y' });
+
+      expect(logRepository.crea).toHaveBeenCalledWith(expect.objectContaining({ origine: 'sistema' }));
+    });
+
+    test('risponde 400 se "evento" o "messaggio" mancano', async () => {
+      const res = await request(app).post('/api/logs').send({ messaggio: 'senza evento' });
+
+      expect(res.status).toBe(400);
+      expect(logRepository.crea).not.toHaveBeenCalled();
+    });
+  });
+
+  test('REGRESSIONE: GET /api/logs resta protetto da JWT dopo l\'apertura di POST /api/logs (POST pubblica, GET no)', async () => {
+    const res = await request(app).get('/api/logs');
+
+    expect(res.status).toBe(401);
+    expect(logRepository.trova).not.toHaveBeenCalled();
   });
 });

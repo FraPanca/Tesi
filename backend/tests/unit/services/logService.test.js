@@ -57,3 +57,60 @@ describe('logService.cercaLog', () => {
     });
   });
 });
+
+describe('logService.creaLog', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    logRepository.crea.mockResolvedValue({ _id: '1' });
+  });
+
+  test('lancia ServiceError 400 se "evento" manca', async () => {
+    await expect(
+      logService.creaLog({ origine: 'sistema', messaggio: 'qualcosa' })
+    ).rejects.toMatchObject({ status: 400 });
+    expect(logRepository.crea).not.toHaveBeenCalled();
+  });
+
+  test('lancia ServiceError 400 se "messaggio" manca', async () => {
+    await expect(
+      logService.creaLog({ origine: 'sistema', evento: 'prophet.forecast_fallito' })
+    ).rejects.toMatchObject({ status: 400 });
+    expect(logRepository.crea).not.toHaveBeenCalled();
+  });
+
+  test('lancia ServiceError 400 se "livello" è presente ma non valido', async () => {
+    await expect(
+      logService.creaLog({
+        origine: 'sistema',
+        evento: 'x',
+        messaggio: 'y',
+        livello: 'debug',
+      })
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  test('lancia ServiceError 400 se "origine" non è tra quelle valide', async () => {
+    await expect(
+      logService.creaLog({ origine: 'esp32', evento: 'x', messaggio: 'y' })
+    ).rejects.toMatchObject({ status: 400 });
+    expect(logRepository.crea).not.toHaveBeenCalled();
+  });
+
+  test('con i campi obbligatori validi, chiama il repository con i dati corretti', async () => {
+    await logService.creaLog({
+      origine: 'sistema',
+      livello: 'error',
+      evento: 'prophet.forecast_fallito',
+      messaggio: 'storico insufficiente',
+      metadati: { presaId: 'camera' },
+    });
+
+    expect(logRepository.crea).toHaveBeenCalledWith({
+      origine: 'sistema',
+      livello: 'error',
+      evento: 'prophet.forecast_fallito',
+      messaggio: 'storico insufficiente',
+      metadati: { presaId: 'camera' },
+    });
+  });
+});
