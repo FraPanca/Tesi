@@ -19,8 +19,10 @@ prophet/.pytest_cache/
 gateway/logs/*.log*
 mosquitto/log/*
 mosquitto/data/*
+prophet/output/*
 !mosquitto/log/.gitkeep
 !mosquitto/data/.gitkeep
+!prophet/output/.gitkeep
 
 # --- Node.js (backend + frontend) ---
 node_modules/
