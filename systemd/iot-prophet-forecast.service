@@ -7,3 +7,4 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/home/francesco/iot
 ExecStart=/usr/bin/docker compose --profile jobs run --rm prophet
+TimeoutStartSec=600

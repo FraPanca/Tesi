@@ -52,7 +52,7 @@ Resta vuota sia in sviluppo sia in produzione: backend e WebSocket vengono raggi
 - **`npm run build`**: build di produzione in `dist/` (bundle minificato, code-split)
 - **`npm run preview`**: serve la build di produzione appena creata, utile per un test rapido senza Docker
 - **`npm run lint`** (o `npx oxlint .`): lint con Oxlint
-- **Docker**: servizio dello stack completo definito in `docker-compose.yml` (root): build multi-stage Node→nginx, espone la porta 80 (configurabile), fa da reverse proxy verso `backend:3000`. Prima di avviarlo conviene verificare che la porta 80 sia effettivamente libera sull'host (`ss -tlnp | grep :80`), soprattutto se sul Raspberry gira già un altro servizio web. Dalla root: `docker compose up frontend` (o l'intero stack con `docker compose up`)
+- **Docker**: servizio dello stack completo definito in `docker-compose.yml` (root): build multi-stage in tre fasi (`build` → `test` → `production`), espone la porta 80 (configurabile), fa da reverse proxy verso `backend:3000`. Lo stage `test` esegue `npm run test` come parte della build: se i test falliscono, la build si interrompe prima che l'immagine di produzione (Node→nginx) venga creata; lo stage `production` include un `COPY --from=test` mirato a un file non necessario a runtime, usato solo per forzare `test` nel grafo di build (Docker altrimenti costruirebbe solo gli stage referenziati dallo stage finale). Prima di avviarlo conviene verificare che la porta 80 sia effettivamente libera sull'host (`ss -tlnp | grep :80`), soprattutto se sul Raspberry gira già un altro servizio web. Dalla root: `docker compose up frontend` (o l'intero stack con `docker compose up`)
 
 ### Struttura interna
 
@@ -61,7 +61,7 @@ frontend/
 ├── .env.example
 ├── .dockerignore
 ├── Dockerfile
-│   # build multi-stage: Node compila, nginx serve i file statici
+│   # build multi-stage a tre fasi (build/test/production): Node compila e testa, nginx serve i file statici
 ├── nginx.conf
 │   # serve la SPA + reverse proxy verso backend:3000 per /api e /socket.io
 ├── vite.config.js
@@ -184,7 +184,7 @@ npx vitest run <path-al-file>  # un singolo file
 npm run test:watch             # riesecuzione automatica
 ```
 
-**Risultato attuale:** 95 test, tutti verdi.
+**Risultato attuale:** 95 test, tutti verdi. La tabella seguente riflette i sette file originari della suite (48 test); da allora sono stati aggiunti test anche per `ConsumptionChart`, `AnomalieList`, `ForecastChart`, `PrevisioniPanel`, `Dashboard` e `PresaDetail` (vedi la struttura interna sopra per l'elenco completo dei file), senza un dettaglio per singolo file disponibile per l'incremento.
 
 | File | N. test | Cosa verifica |
 |---|---|---|
@@ -220,7 +220,7 @@ Decisioni tecniche degne di nota:
 - L'aggregazione per "giorno di picco" raggruppa i 168 punti delle previsioni con conversione esplicita a `Europe/Rome`, non usando direttamente la porzione data della stringa UTC: quest'ultima metterebbe nel giorno sbagliato i punti vicini alla mezzanotte italiana, per la differenza di 1-2 ore dovuta al cambio ora legale.
 - I filtri di `useLogs` sono parametri primitivi, non un oggetto: un oggetto ricreato ad ogni render ha un riferimento diverso anche a contenuto identico, causando ricariche non necessarie se messo in una dependency array.
 
-Punti aperti, non bloccanti:
+Altri punti da segnalare:
 
 - **Anomalie senza etichetta di gravità testuale**: il campo `punteggio` (continuo, convenzione Isolation Forest) è mostrato come numero grezzo invece che come "alta"/"media"/"bassa", scelta deliberata, mancando un riferimento sui valori tipici prodotti in produzione.
 - **Meccanismo "valore singolo" alle transizioni**: implementato sia lato ESP32 (pubblicazione immediata a ogni transizione confermata) sia lato backend (il campo `valore_singolo` viene ricevuto ma volutamente ignorato: ogni valore, incluso quello singolo, è persistito come lettura normale, senza distinzione a valle). Per il grafico l'effetto pratico resta comunque positivo: riduce la finestra di attesa prima che un nuovo dato reale arrivi dopo una transizione, anche senza un flag esplicito da consumare lato client.
@@ -278,7 +278,7 @@ Left empty both in development and production: the backend and WebSocket are rea
 - **`npm run build`**: production build in `dist/` (minified bundle, code-split)
 - **`npm run preview`**: serves the freshly created production build, useful for a quick check without Docker
 - **`npm run lint`** (or `npx oxlint .`): lint with Oxlint
-- **Docker**: a service of the full stack defined in `docker-compose.yml` (root): multi-stage Node→nginx build, exposes port 80 (configurable), reverse-proxies to `backend:3000`. Before starting it, it's worth checking that port 80 is actually free on the host (`ss -tlnp | grep :80`), especially if another web service is already running on the Raspberry Pi. From the root: `docker compose up frontend` (or the whole stack with `docker compose up`)
+- **Docker**: a service of the full stack defined in `docker-compose.yml` (root): multi-stage build in three phases (`build` → `test` → `production`), exposes port 80 (configurable), reverse-proxies to `backend:3000`. The `test` stage runs `npm run test` as part of the build: if the tests fail, the build stops before the production image (Node→nginx) is created; the `production` stage includes a targeted `COPY --from=test` of a file not needed at runtime, used only to force `test` into the build graph (Docker would otherwise only build the stages referenced by the final stage). Before starting it, it's worth checking that port 80 is actually free on the host (`ss -tlnp | grep :80`), especially if another web service is already running on the Raspberry Pi. From the root: `docker compose up frontend` (or the whole stack with `docker compose up`)
 
 ### Internal structure
 
@@ -287,7 +287,7 @@ frontend/
 ├── .env.example
 ├── .dockerignore
 ├── Dockerfile
-│   # multi-stage build: Node compiles, nginx serves the static files
+│   # three-stage build (build/test/production): Node compiles and tests, nginx serves the static files
 ├── nginx.conf
 │   # serves the SPA + reverse-proxies to backend:3000 for /api and /socket.io
 ├── vite.config.js
@@ -410,7 +410,7 @@ npx vitest run <path-to-file>  # a single file
 npm run test:watch             # auto re-run
 ```
 
-**Current result:** 95 tests, all passing.
+**Current result:** 95 tests, all passing. The table below reflects the suite's original seven files (48 tests); tests have since been added for `ConsumptionChart`, `AnomalieList`, `ForecastChart`, `PrevisioniPanel`, `Dashboard`, and `PresaDetail` as well (see the internal structure above for the complete file list), with no per-file detail available for the increment.
 
 | File | # tests | What it checks |
 |---|---|---|
@@ -446,7 +446,7 @@ Notable technical decisions:
 - The "peak day" aggregation groups the 168 forecast points with explicit conversion to `Europe/Rome`, rather than using the date portion of the UTC string directly: the latter would put points near Italian midnight on the wrong day, from the 1-2 hour DST difference.
 - `useLogs` filters are primitive parameters, not an object: an object recreated on every render has a different reference even with identical content, causing unnecessary reloads when placed in a dependency array.
 
-Open, non-blocking points:
+Other points worth noting:
 
 - **Anomalies without a text severity label**: the `punteggio` field (continuous, Isolation Forest convention) is shown as a raw number instead of "high"/"medium"/"low", a deliberate choice, for lack of a reference on typical production values.
 - **"Single value" mechanism on transitions**: implemented both on the ESP32 side (immediate publish on every confirmed transition) and on the backend side (the `valore_singolo` field is received but deliberately ignored: every value, including the single one, is persisted as a normal reading, with no downstream distinction). For the chart, the practical effect is still positive: it reduces the wait before a new real reading arrives after a transition, even without an explicit flag to consume client-side.

@@ -1,0 +1,22 @@
+# Ambiente Python locale — le dipendenze si installano da requirements.txt dentro
+# il Dockerfile, non serve portarsi dietro un venv locale
+venv
+.venv
+__pycache__/
+*.pyc
+
+# Dati generati a runtime: montati via bind mount in docker-compose.yml
+# (./prophet/output:/app/output), non vanno "congelati" dentro l'immagine
+output
+
+# Test e strumenti di sviluppo — il Dockerfile installa solo requirements.txt,
+# non requirements-dev.txt, quindi pytest non serve nell'immagine
+tests
+pytest.ini
+requirements-dev.txt
+.pytest_cache
+
+# Controllo versione e documentazione
+.git
+.gitignore
+README.md

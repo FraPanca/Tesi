@@ -1,16 +1,20 @@
-# Node 20 LTS: richiesto da Express ^5.1.0 / Mongoose ^8.0.0
-FROM node:20-slim
-
+# Stage 1: build
+FROM node:20-slim AS build
 WORKDIR /app
-
-# Copia solo i manifest prima del codice per sfruttare la cache dei layer Docker
-# (npm ci gira di nuovo solo se package*.json cambia, non ad ogni modifica al codice)
 COPY package*.json ./
-RUN npm ci --omit=dev
-
+RUN npm ci
 COPY . .
 
-EXPOSE 3000
+# Stage 2: test
+FROM build AS test
+RUN npm run test
 
-# "npm start" esegue "node src/app.js" (produzione) e non "npm run dev" che è pensato solo per lo sviluppo locale fuori Docker.
+# Stage 3: production
+FROM node:20-slim AS production
+WORKDIR /app
+COPY --from=test /app/package.json /tmp/test-gate
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+EXPOSE 3000
 CMD ["npm", "start"]

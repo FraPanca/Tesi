@@ -89,9 +89,9 @@ docker compose up -d --build backend
 docker compose logs -f backend
 ```
 
-Sequenza di avvio attesa nei log: `[MongoDB] connesso` → `[Redis] connesso` → `[MQTT] connesso al broker` → `[Server] in ascolto sulla porta 3000`. Il servizio dipende da `mongodb`/`redis`/`mosquitto` (`condition: service_healthy`): non si avvia prima che siano pronti.
+Sequenza di avvio attesa nei log: `[MongoDB] connesso`, poi `[Redis] connesso`, poi `[MQTT] connesso al broker`, poi `[Server] in ascolto sulla porta 3000`. Il servizio dipende da `mongodb`/`redis`/`mosquitto` (`condition: service_healthy`): non si avvia prima che siano pronti.
 
-Il `Dockerfile` copia prima solo `package*.json` ed esegue `npm ci --omit=dev`, poi copia il resto del codice: mantiene così il layer delle dipendenze in cache Docker.
+Il `Dockerfile` è multi-stage in tre fasi (`build` → `test` → `production`): lo stage `test` esegue `npm run test` come parte della build stessa, quindi il codice non supera mai lo stage di produzione senza che i test siano passati. Perché lo stage `test` venga effettivamente eseguito (Docker costruisce solo gli stage referenziati dallo stage finale), `production` include un `COPY --from=test` mirato a un file che non serve a runtime, usato solo per forzare `test` nel grafo di build: se i test falliscono, la build si interrompe lì, prima che l'immagine di produzione venga creata.
 
 ### Struttura interna
 
@@ -243,7 +243,7 @@ npm run test:watch          # riesecuzione automatica
 
 Non serve nessun `.env` reale né MongoDB/Redis/MQTT attivi: tutto lo strato esterno è mockato (repository Mongo/Redis, client MQTT, modello `Log`), lasciando reale tutta la logica applicativa; il test di integrazione fa lo stesso a livello di intera applicazione HTTP. Le uniche variabili d'ambiente necessarie (`JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`) sono impostate direttamente nei file di test che ne hanno bisogno.
 
-**Risultato attuale:** 101 test, tutti verdi.
+**Risultato attuale:** 101 test, tutti verdi. La tabella seguente riflette la suite al momento della sua introduzione (9 suite, 62 test); da allora è stata aggiunta almeno `PrevisioneService.test.js`, senza un dettaglio per singolo file disponibile per l'incremento.
 
 | File | N. test | Cosa verifica |
 |---|---|---|
@@ -291,6 +291,8 @@ curl "http://localhost:3000/api/logs?livello=error&limite=20" -H "Authorization:
 - `presaService.js`: la scrittura su MongoDB avviene prima della registrazione/rimozione MQTT del dispositivo. Se la pubblicazione fallisce dopo i retry, la presa resta creata/rimossa in Mongo senza che il gateway lo sappia (nessun rollback implementato).
 - `adminService.js`: un fallimento di pubblicazione dopo i retry su flush/healthcheck è indistinguibile lato HTTP da "nessuna risposta in tempo".
 - Il payload MQTT `optimized` include anche un campo `valore_singolo` (booleano, distingue un placeholder temporaneo pubblicato dagli ESP32 da un aggregato consolidato). **Il backend lo ignora completamente**: ogni valore ricevuto, incluso quello singolo, viene persistito come dato normale e mai rimosso, senza campo di schema dedicato né esposizione all'API. Scelta deliberata, dopo aver valutato e scartato sia un campo di schema sia una struttura in memoria per tracciare e rimuovere i placeholder.
+- Espone `GET /api/health` (risponde `{ status: 'ok' }`), usato dall'healthcheck Docker del container per determinare quando il servizio è pronto.
+- Nella segmentazione di rete Docker (`backend-net`/`frontend-net`, vedi [README di root](../README.md)), il backend è l'unico servizio presente su entrambe le reti: è il solo punto di contatto tra frontend e servizi dati (MongoDB, Redis, broker MQTT).
 
 ---
 
@@ -381,9 +383,9 @@ docker compose up -d --build backend
 docker compose logs -f backend
 ```
 
-Expected startup sequence in the logs: `[MongoDB] connesso` → `[Redis] connesso` → `[MQTT] connesso al broker` → `[Server] in ascolto sulla porta 3000`. The service depends on `mongodb`/`redis`/`mosquitto` (`condition: service_healthy`) and won't start before they are ready.
+Expected startup sequence in the logs: `[MongoDB] connesso`, then `[Redis] connesso`, then `[MQTT] connesso al broker`, then `[Server] in ascolto sulla porta 3000`. The service depends on `mongodb`/`redis`/`mosquitto` (`condition: service_healthy`) and won't start before they are ready.
 
-The `Dockerfile` first copies only `package*.json` and runs `npm ci --omit=dev`, then copies the rest of the code: this keeps the dependency layer cached by Docker.
+The `Dockerfile` is multi-stage in three phases (`build` → `test` → `production`): the `test` stage runs `npm run test` as part of the build itself, so the code never reaches the production stage without the tests passing. For the `test` stage to actually run (Docker only builds the stages referenced by the final stage), `production` includes a targeted `COPY --from=test` of a file that isn't needed at runtime, used only to force `test` into the build graph: if the tests fail, the build stops there, before the production image is created.
 
 ### Internal structure
 
@@ -535,7 +537,7 @@ npm run test:watch          # auto re-run
 
 No real `.env` or a running MongoDB/Redis/MQTT is needed: the entire external layer is mocked (Mongo/Redis repositories, MQTT client, the `Log` model), leaving all the application logic real; the integration test does the same at the whole-HTTP-application level. The only environment variables needed (`JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`) are set directly in the test files that need them.
 
-**Current result:** 101 tests, all passing.
+**Current result:** 101 tests, all passing. The table below reflects the suite as it was introduced (9 suites, 62 tests); at least `PrevisioneService.test.js` has been added since then, with no per-file detail available for the increment.
 
 | File | # tests | What it checks |
 |---|---|---|
@@ -583,3 +585,5 @@ curl "http://localhost:3000/api/logs?livello=error&limite=20" -H "Authorization:
 - `presaService.js`: the MongoDB write happens before the MQTT registration/removal of the device. If the publish fails after retries, the plug stays created/removed in Mongo without the gateway knowing (no rollback implemented).
 - `adminService.js`: a publish failure after retries on flush/healthcheck is indistinguishable, on the HTTP side, from "no response arrived in time".
 - The MQTT `optimized` payload also includes a `valore_singolo` field (boolean, distinguishes a temporary placeholder published by the ESP32 boards from a consolidated aggregate). **The backend ignores it entirely**: every value received, including the single one, is persisted as a normal reading and never removed, with no dedicated schema field and no API exposure. A deliberate choice, after evaluating and dropping both a schema field and an in-memory structure to track and remove placeholders.
+- Exposes `GET /api/health` (responds `{ status: 'ok' }`), used by the container's Docker healthcheck to determine when the service is ready.
+- In the Docker network segmentation (`backend-net`/`frontend-net`, see the [root README](../README.md)), the backend is the only service present on both networks: it's the sole point of contact between the frontend and the data services (MongoDB, Redis, MQTT broker).

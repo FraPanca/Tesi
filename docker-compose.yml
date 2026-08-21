@@ -18,6 +18,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks: [backend-net]
 
   mongodb:
     image: mongo:7
@@ -39,6 +40,7 @@ services:
       start_period: 20s
     # Grace period generoso: deve poter chiudere in modo pulito su SIGTERM, per evitare rischi di corruzione dati sull'HDD.
     stop_grace_period: 30s
+    networks: [backend-net]
 
   redis:
     image: redis:7
@@ -53,6 +55,7 @@ services:
       timeout: 5s
       retries: 5
     stop_grace_period: 15s
+    networks: [backend-net]
 
   backend:
     build: ./backend
@@ -76,17 +79,26 @@ services:
         condition: service_healthy
       mosquitto:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     ports:
       - "3000:3000"
+    networks: [backend-net, frontend-net]
 
   frontend:
     build: ./frontend
     container_name: frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "80:80"
+    networks: [frontend-net]
 
   prophet:
     build: ./prophet
@@ -98,7 +110,10 @@ services:
       - backend
     volumes:
       - ./prophet/output:/app/output # Necessario SOLO per evaluation/genera_grafico.py
+    networks: [backend-net]
 
 networks:
-  default:
-    name: iot-net
+  backend-net:
+    name: iot-backend
+  frontend-net:
+    name: iot-frontend

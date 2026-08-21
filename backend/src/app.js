@@ -16,6 +16,8 @@ const { connettiMqtt } = require('./mqtt/client');
 const app = express();
 app.use(express.json());
 
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+
 app.use('/api/prese', require('./routes/presaRoutes'));
 app.use('/api/consumi', require('./routes/consumoRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));

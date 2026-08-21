@@ -20,3 +20,9 @@ interruzioni:
     tipo: evento_speciale
     da: "2026-08-01"
     a: "2026-08-08"
+
+  - nome: "Malfunzionamento raccolta dati 15/08/2026"
+    presa: "presa2"
+    tipo: assenza_vera
+    da: "2026-08-15"
+    a: "2026-08-15"

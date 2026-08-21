@@ -92,6 +92,7 @@ docker exec -it mosquitto mosquitto_pub -t "home/presa1/raw" \
 - Impostare le credenziali come variabili d'ambiente del container Docker (fatto nel compose) **non crea da sola** l'utente sul broker: serve sempre il passo `mosquitto_passwd`.
 - Nessun ACL per-topic configurato o verificato, vedi sopra.
 - Dati persistiti su hard disk esterno, non sulla scheda SD del Raspberry. Vedi [`systemd/README.md`](../systemd/README.md) e il [README di root](../README.md) per il setup del mount.
+- Nella segmentazione di rete Docker (`backend-net`/`frontend-net`, vedi [README di root](../README.md)), il broker è su `backend-net`: non è raggiungibile direttamente dal frontend, solo da gateway (via port mapping sull'host), backend, ed ESP32 (via rete locale).
 
 ---
 
@@ -185,3 +186,4 @@ docker exec -it mosquitto mosquitto_pub -t "home/presa1/raw" \
 - Setting credentials as Docker environment variables (already done in the compose file) does **not** create the broker user by itself: the `mosquitto_passwd` step is always required.
 - No per-topic ACL configured or verified, see above.
 - Data is persisted on the external hard disk, not on the Raspberry Pi's SD card. See [`systemd/README.md`](../systemd/README.md) and the [root README](../README.md) for the mount setup.
+- In the Docker network segmentation (`backend-net`/`frontend-net`, see the [root README](../README.md)), the broker is on `backend-net`: it isn't directly reachable from the frontend, only from the gateway (via port mapping on the host), the backend, and the ESP32 boards (via the local network).

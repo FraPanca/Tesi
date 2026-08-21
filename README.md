@@ -2,9 +2,8 @@
 
 Sistema IoT domestico per il monitoraggio e l'ottimizzazione dei consumi energetici, basato su Raspberry Pi 5.
 
-*Tesi di laurea triennale - Ingegneria Informatica.*
+*Tesi di laurea triennale, Ingegneria Informatica.*
 
-![Architettura del sistema](docs/img/Architecture.jpg)
 ## Italiano
 
 ### Descrizione
@@ -38,8 +37,8 @@ Il Raspberry Pi e le due prese Tapo hanno un indirizzo IP fisso, riservato dal *
 | Dispositivo | IP |
 |---|---|
 | Raspberry Pi 5 | `192.168.1.178` |
-| Presa Tapo P110 - presa1 | `192.168.1.180` |
-| Presa Tapo P110 - presa2 | `192.168.1.181` |
+| Presa Tapo P110, presa1 | `192.168.1.180` |
+| Presa Tapo P110, presa2 | `192.168.1.181` |
 
 Questi indirizzi sono quelli effettivamente usati in `gateway/config/devices.json`, in `esp32/*/secrets.h` (come `MQTT_BROKER`) e nei payload dei comandi (`{"action":"off","ip":"192.168.1.180"}`).
 
@@ -77,6 +76,8 @@ Backend (Node/Express)
 
 Dettagli in [`prophet/README.md`](prophet/README.md) e [`systemd/README.md`](systemd/README.md).
 
+**Segmentazione di rete Docker**: lo stack usa due reti dedicate invece di un'unica rete di default: `backend-net` (broker MQTT, MongoDB, Redis, Prophet, e il backend) e `frontend-net` (frontend e backend). Il backend è l'unico servizio su entrambe le reti, e quindi l'unico punto di contatto tra le due: il frontend non può raggiungere direttamente i servizi dati. Un servizio aggiunto in futuro senza `networks:` esplicito nel `docker-compose.yml` resta isolato per default, invece di ereditare automaticamente l'accesso a tutto lo stack.
+
 ### Flusso dati e topic MQTT
 
 Il broker MQTT è il punto di scambio tra tutti i componenti. Tabella completa dei topic usati nel sistema:
@@ -106,7 +107,7 @@ Il flusso "dati" procede in un verso (presa → gateway → load balancer → wo
 | `esp32/` | Firmware C++ per load balancer e worker ESP32 | [esp32/README.md](esp32/README.md) |
 | `systemd/` | Unit systemd per l'avvio automatico del sistema | [systemd/README.md](systemd/README.md) |
 
-File nella root: `docker-compose.yml` (orchestrazione dei servizi containerizzati), `manage.sh` (script di avvio/arresto), `.env.example` (template delle variabili lette da Compose).
+File nella root: `docker-compose.yml` (orchestrazione dei servizi containerizzati), `manage.sh` (script di avvio/arresto), `backup-mongo.sh` (backup schedulato di MongoDB, vedi "Backup" sotto), `.env.example` (template delle variabili lette da Compose).
 
 ### Setup completo del sistema
 
@@ -227,9 +228,47 @@ sudo systemctl enable --now iot-prophet-forecast.timer
 
 Dettagli completi (formato di `config/interruzioni.yaml`, test manuale del job, motivazione delle scelte sulla unit) in [`prophet/README.md`](prophet/README.md) e [`systemd/README.md`](systemd/README.md).
 
+#### 10. Installazione del backup MongoDB schedulato
+
+```bash
+sudo cp systemd/iot-mongo-backup.service systemd/iot-mongo-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now iot-mongo-backup.timer
+```
+
+Dettagli in [`systemd/README.md`](systemd/README.md) e nella sezione "Backup" sotto.
+
 ### Testing
 
-Suite di test automatizzata su backend (Jest, 101 test), frontend (Vitest, 95 test) e prophet (pytest, 92 test): 288 test in totale sui tre componenti coperti. Gateway e firmware ESP32 restano verificati solo manualmente (`mosquitto_pub`/`sub`, CLI `kasa`, Serial Monitor). Dettagli nei README di [`backend/`](backend/README.md), [`frontend/`](frontend/README.md) e [`prophet/`](prophet/README.md).
+Suite di test automatizzata su backend (Jest, 101 test), frontend (Vitest, 95 test) e prophet (pytest, 92 test): 288 test in totale sui tre componenti coperti finora. Gateway e firmware ESP32 restano verificati solo manualmente (`mosquitto_pub`/`sub`, CLI `kasa`, Serial Monitor). Dettagli nei README di [`backend/`](backend/README.md), [`frontend/`](frontend/README.md) e [`prophet/`](prophet/README.md). Per backend e frontend, la tabella di dettaglio per singolo file riflette la suite al momento della sua introduzione (62/48 test); i totali qui sopra sono quelli aggiornati.
+
+Le immagini Docker di backend e frontend includono anche uno stage `test` nella build stessa (`build` → `test` → `production`): `docker compose build` (o `up --build`) esegue la suite come parte della build e si interrompe prima di produrre l'immagine di produzione se i test falliscono.
+
+### Backup
+
+Dump completo e giornaliero di MongoDB (`mongodump --archive --gzip`, script `backup-mongo.sh` in root) verso `/mnt/wd1tb/iot-energy/backups/mongodb/`, con rotazione automatica (elimina i dump più vecchi di `RETENTION_DAYS`, default 7 giorni). Non è un backup incrementale: richiederebbe l'oplog di un replica set, non presente in questo deployment standalone. È invece una serie progressiva di dump completi datati, ciascuno autonomamente ripristinabile.
+
+Schedulato alle 03:00 tramite `iot-mongo-backup.timer` (systemd), orario scelto per non competere per I/O con `iot-prophet-forecast.timer`, che gira alle 00:05. Dettagli sulla unit in [`systemd/README.md`](systemd/README.md).
+
+**Redis non è incluso nel backup**: per come è usato nel progetto (cache degli N valori più recenti, non fonte di verità) è ricostruibile da MongoDB, non serve persisterne una copia.
+
+Verifica/test manuale:
+```bash
+sudo systemctl start iot-mongo-backup.service
+sudo journalctl -u iot-mongo-backup.service -n 20
+ls -lh /mnt/wd1tb/iot-energy/backups/mongodb/
+```
+
+Restore, se necessario:
+```bash
+docker compose exec -T mongodb mongorestore \
+  --username admin --password '<MONGO_ROOT_PASSWORD>' \
+  --authenticationDatabase admin \
+  --drop --gzip --archive < /mnt/wd1tb/iot-energy/backups/mongodb/iot_energy-<timestamp>.archive.gz
+```
+`--drop` sostituisce le collection esistenti: va lanciato con attenzione, non per errore su dati che non si vogliono perdere.
+
+**Limitazione nota**: la copia resta sullo stesso hard disk dei dati live. Protegge da errori applicativi o restore sbagliati, non da un guasto fisico del disco. Nessuna copia off-site configurata.
 
 ### Limitazioni note
 
@@ -237,6 +276,7 @@ Suite di test automatizzata su backend (Jest, 101 test), frontend (Vitest, 95 te
 - Load balancer statico su 2 worker fissi, nessuna registrazione dinamica di nuovi elaboratori.
 - Backend esposto su HTTP semplice (non HTTPS): scelta motivata dal fatto che il traffico remoto passa comunque da Tailscale, cifrato a livello WireGuard.
 - Singolo utente amministratore con credenziali fisse in `.env`, nessuna gestione multi-utente.
+- Backup di MongoDB solo locale (stesso hard disk dei dati live), nessuna copia off-site.
 
 ---
 
@@ -273,8 +313,8 @@ The Raspberry Pi and the two Tapo plugs have a fixed IP address, reserved from t
 | Device | IP |
 |---|---|
 | Raspberry Pi 5 | `192.168.1.178` |
-| Tapo P110 plug - presa1 | `192.168.1.180` |
-| Tapo P110 plug - presa2 | `192.168.1.181` |
+| Tapo P110 plug, presa1 | `192.168.1.180` |
+| Tapo P110 plug, presa2 | `192.168.1.181` |
 
 These are the addresses actually used in `gateway/config/devices.json`, in `esp32/*/secrets.h` (as `MQTT_BROKER`), and in command payloads (`{"action":"off","ip":"192.168.1.180"}`).
 
@@ -312,6 +352,8 @@ Backend (Node/Express)
 
 Details in [`prophet/README.md`](prophet/README.md) and [`systemd/README.md`](systemd/README.md).
 
+**Docker network segmentation**: the stack uses two dedicated networks instead of a single default one: `backend-net` (MQTT broker, MongoDB, Redis, Prophet, and the backend) and `frontend-net` (frontend and backend). The backend is the only service on both networks, and therefore the only point of contact between the two: the frontend cannot reach the data services directly. A service added in the future without an explicit `networks:` entry in `docker-compose.yml` stays isolated by default, instead of automatically inheriting access to the whole stack.
+
 ### Data flow and MQTT topics
 
 The MQTT broker is the exchange point between all components. Full table of the topics used in the system:
@@ -341,7 +383,7 @@ The "data" flow moves in one direction (plug → gateway → load balancer → w
 | `esp32/` | C++ firmware for the load balancer and worker ESP32 boards | [esp32/README.md](esp32/README.md) |
 | `systemd/` | systemd units for automatic system startup | [systemd/README.md](systemd/README.md) |
 
-Files in the root: `docker-compose.yml` (orchestration of the containerized services), `manage.sh` (start/stop wrapper script), `.env.example` (template of the variables read by Compose).
+Files in the root: `docker-compose.yml` (orchestration of the containerized services), `manage.sh` (start/stop wrapper script), `backup-mongo.sh` (scheduled MongoDB backup, see "Backup" below), `.env.example` (template of the variables read by Compose).
 
 ### Full system setup
 
@@ -462,9 +504,47 @@ sudo systemctl enable --now iot-prophet-forecast.timer
 
 Full details (the `config/interruzioni.yaml` format, manually testing the job, the reasoning behind the unit's settings) in [`prophet/README.md`](prophet/README.md) and [`systemd/README.md`](systemd/README.md).
 
+#### 10. Installing the scheduled MongoDB backup
+
+```bash
+sudo cp systemd/iot-mongo-backup.service systemd/iot-mongo-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now iot-mongo-backup.timer
+```
+
+Details in [`systemd/README.md`](systemd/README.md) and in the "Backup" section below.
+
 ### Testing
 
-Automated test suite on the backend (Jest, 101 tests), frontend (Vitest, 95 tests), and prophet (pytest, 92 tests): 288 tests in total across the three components covered so far. The gateway and ESP32 firmware are still only verified manually (`mosquitto_pub`/`sub`, the `kasa` CLI, Serial Monitor). Details in the [`backend/`](backend/README.md), [`frontend/`](frontend/README.md), and [`prophet/`](prophet/README.md) READMEs.
+Automated test suite on the backend (Jest, 101 tests), frontend (Vitest, 95 tests), and prophet (pytest, 92 tests): 288 tests in total across the three components covered so far. The gateway and ESP32 firmware are still only verified manually (`mosquitto_pub`/`sub`, the `kasa` CLI, Serial Monitor). Details in the [`backend/`](backend/README.md), [`frontend/`](frontend/README.md), and [`prophet/`](prophet/README.md) READMEs. For backend and frontend, the per-file breakdown table reflects the suite as it was introduced (62/48 tests); the totals above are the updated ones.
+
+The backend and frontend Docker images also include a `test` stage in the build itself (`build` → `test` → `production`): `docker compose build` (or `up --build`) runs the suite as part of the build and stops before producing the production image if the tests fail.
+
+### Backup
+
+A full, daily MongoDB dump (`mongodump --archive --gzip`, `backup-mongo.sh` script in the root) to `/mnt/wd1tb/iot-energy/backups/mongodb/`, with automatic rotation (deletes dumps older than `RETENTION_DAYS`, default 7 days). This is not an incremental backup: that would require the oplog of a replica set, not present in this standalone deployment. It's instead a progressive series of dated full dumps, each independently restorable.
+
+Scheduled at 03:00 via `iot-mongo-backup.timer` (systemd), a time chosen to avoid competing for I/O with `iot-prophet-forecast.timer`, which runs at 00:05. Unit details in [`systemd/README.md`](systemd/README.md).
+
+**Redis is not included in the backup**: given how it's used in the project (a cache of the most recent N values, not a source of truth), it can be rebuilt from MongoDB, so persisting a copy of it isn't needed.
+
+Manual verification/test:
+```bash
+sudo systemctl start iot-mongo-backup.service
+sudo journalctl -u iot-mongo-backup.service -n 20
+ls -lh /mnt/wd1tb/iot-energy/backups/mongodb/
+```
+
+Restore, if needed:
+```bash
+docker compose exec -T mongodb mongorestore \
+  --username admin --password '<MONGO_ROOT_PASSWORD>' \
+  --authenticationDatabase admin \
+  --drop --gzip --archive < /mnt/wd1tb/iot-energy/backups/mongodb/iot_energy-<timestamp>.archive.gz
+```
+`--drop` replaces the existing collections: run it carefully, not by mistake on data you don't want to lose.
+
+**Known limitation**: the copy stays on the same hard disk as the live data. It protects against application errors or bad restores, not against a physical disk failure. No off-site copy is configured.
 
 ### Known limitations
 
@@ -472,3 +552,4 @@ Automated test suite on the backend (Jest, 101 tests), frontend (Vitest, 95 test
 - Static load balancer with 2 fixed workers, no dynamic registration of additional processors.
 - The backend is exposed over plain HTTP (not HTTPS): this choice is justified by the fact that remote traffic already goes through Tailscale, encrypted at the WireGuard layer.
 - Single administrator account with fixed credentials in `.env`, no multi-user management.
+- MongoDB backup is local only (same hard disk as the live data), no off-site copy.

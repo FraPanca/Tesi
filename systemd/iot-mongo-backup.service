@@ -1,0 +1,11 @@
+[Unit]
+Description=IoT Energy Monitor - Backup giornaliero MongoDB
+After=iot-energy-docker.service network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/wd1tb
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/francesco/iot
+ExecStart=/home/francesco/iot/backup-mongo.sh
+TimeoutStartSec=300

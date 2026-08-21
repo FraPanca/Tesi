@@ -1,7 +1,6 @@
 # Python 3.11: versione stabile compatibile con prophet 1.3.0 e le sue dipendenze (cmdstanpy, numpy, pandas).
 # Immagine "slim", non "alpine": cmdstanpy si aspetta glibc, non musl.
 FROM python:3.11-slim
-
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential g++ \
@@ -22,5 +21,4 @@ print('warm-up Prophet/Stan completato')"
 COPY src ./src
 COPY config ./config
 
-# Nessun EXPOSE: questo container non e' un server sempre acceso, e' un job batch lanciato una volta al giorno da systemd.
 CMD ["python", "src/main.py"]
