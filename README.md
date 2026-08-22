@@ -2,8 +2,9 @@
 
 Sistema IoT domestico per il monitoraggio e l'ottimizzazione dei consumi energetici, basato su Raspberry Pi 5.
 
-*Tesi di laurea triennale, Ingegneria Informatica.*
+*Tesi di laurea triennale - Ingegneria Informatica.*
 
+![Architettura del sistema](docs/img/Architecture.jpg)
 ## Italiano
 
 ### Descrizione
@@ -37,8 +38,8 @@ Il Raspberry Pi e le due prese Tapo hanno un indirizzo IP fisso, riservato dal *
 | Dispositivo | IP |
 |---|---|
 | Raspberry Pi 5 | `192.168.1.178` |
-| Presa Tapo P110, presa1 | `192.168.1.180` |
-| Presa Tapo P110, presa2 | `192.168.1.181` |
+| Presa Tapo P110 - presa1 | `192.168.1.180` |
+| Presa Tapo P110 - presa2 | `192.168.1.181` |
 
 Questi indirizzi sono quelli effettivamente usati in `gateway/config/devices.json`, in `esp32/*/secrets.h` (come `MQTT_BROKER`) e nei payload dei comandi (`{"action":"off","ip":"192.168.1.180"}`).
 
@@ -240,7 +241,7 @@ Dettagli in [`systemd/README.md`](systemd/README.md) e nella sezione "Backup" so
 
 ### Testing
 
-Suite di test automatizzata su backend (Jest, 101 test), frontend (Vitest, 95 test) e prophet (pytest, 92 test): 288 test in totale sui tre componenti coperti finora. Gateway e firmware ESP32 restano verificati solo manualmente (`mosquitto_pub`/`sub`, CLI `kasa`, Serial Monitor). Dettagli nei README di [`backend/`](backend/README.md), [`frontend/`](frontend/README.md) e [`prophet/`](prophet/README.md). Per backend e frontend, la tabella di dettaglio per singolo file riflette la suite al momento della sua introduzione (62/48 test); i totali qui sopra sono quelli aggiornati.
+Suite di test automatizzata su backend (Jest, 101 test), frontend (Vitest, 95 test) e prophet (pytest, 92 test): 288 test in totale sui tre componenti coperti. Gateway e firmware ESP32 restano verificati solo manualmente (`mosquitto_pub`/`sub`, CLI `kasa`, Serial Monitor). Dettagli nei README di [`backend/`](backend/README.md), [`frontend/`](frontend/README.md) e [`prophet/`](prophet/README.md). Per backend e frontend, la tabella di dettaglio per singolo file riflette la suite al momento della sua introduzione (62/48 test); i totali qui sopra sono quelli aggiornati.
 
 Le immagini Docker di backend e frontend includono anche uno stage `test` nella build stessa (`build` → `test` → `production`): `docker compose build` (o `up --build`) esegue la suite come parte della build e si interrompe prima di produrre l'immagine di produzione se i test falliscono.
 
@@ -313,8 +314,8 @@ The Raspberry Pi and the two Tapo plugs have a fixed IP address, reserved from t
 | Device | IP |
 |---|---|
 | Raspberry Pi 5 | `192.168.1.178` |
-| Tapo P110 plug, presa1 | `192.168.1.180` |
-| Tapo P110 plug, presa2 | `192.168.1.181` |
+| Tapo P110 plug - presa1 | `192.168.1.180` |
+| Tapo P110 plug - presa2 | `192.168.1.181` |
 
 These are the addresses actually used in `gateway/config/devices.json`, in `esp32/*/secrets.h` (as `MQTT_BROKER`), and in command payloads (`{"action":"off","ip":"192.168.1.180"}`).
 
@@ -516,7 +517,7 @@ Details in [`systemd/README.md`](systemd/README.md) and in the "Backup" section 
 
 ### Testing
 
-Automated test suite on the backend (Jest, 101 tests), frontend (Vitest, 95 tests), and prophet (pytest, 92 tests): 288 tests in total across the three components covered so far. The gateway and ESP32 firmware are still only verified manually (`mosquitto_pub`/`sub`, the `kasa` CLI, Serial Monitor). Details in the [`backend/`](backend/README.md), [`frontend/`](frontend/README.md), and [`prophet/`](prophet/README.md) READMEs. For backend and frontend, the per-file breakdown table reflects the suite as it was introduced (62/48 tests); the totals above are the updated ones.
+Automated test suite on the backend (Jest, 101 tests), frontend (Vitest, 95 tests), and prophet (pytest, 92 tests): 288 tests in total across the three components covered. The gateway and ESP32 firmware are still only verified manually (`mosquitto_pub`/`sub`, the `kasa` CLI, Serial Monitor). Details in the [`backend/`](backend/README.md), [`frontend/`](frontend/README.md), and [`prophet/`](prophet/README.md) READMEs. For backend and frontend, the per-file breakdown table reflects the suite as it was introduced (62/48 tests); the totals above are the updated ones.
 
 The backend and frontend Docker images also include a `test` stage in the build itself (`build` → `test` → `production`): `docker compose build` (or `up --build`) runs the suite as part of the build and stops before producing the production image if the tests fail.
 
