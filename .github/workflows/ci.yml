@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Lint
+  lint-frontend:
+    name: Lint (frontend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-and-install
+        with:
+          node-version: '20'
+          working-directory: frontend
+
+      - name: oxlint
+        working-directory: frontend
+        run: npm run lint
+
+  lint-backend:
+    name: Lint (backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-and-install
+        with:
+          node-version: '20'
+          working-directory: backend
+
+      - name: oxlint
+        working-directory: backend
+        run: npm run lint
+
+  lint-gateway:
+    name: Lint (gateway, Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Installa ruff
+        run: pip install ruff
+
+      - name: ruff check (solo bug reali, non stile)
+        run: ruff check --select E9,F gateway/src
+
+  # Test
+  test-backend:
+    name: Test (backend, Jest)
+    needs: lint-backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-and-install
+        with:
+          node-version: '20'
+          working-directory: backend
+
+      - name: Esegui test
+        working-directory: backend
+        run: npm test
+
+  test-frontend:
+    name: Test (frontend, Vitest)
+    needs: lint-frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-and-install
+        with:
+          node-version: '20'
+          working-directory: frontend
+
+      - name: Esegui test
+        working-directory: frontend
+        run: npm test
+
+  test-prophet:
+    name: Test (prophet, pytest - suite rapida)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: prophet/requirements-dev.txt
+
+      - name: Installa dipendenze di test
+        working-directory: prophet
+        run: pip install -r requirements-dev.txt
+
+      - name: Esegui suite rapida (esclude i test marcati "slow")
+        working-directory: prophet
+        run: pytest -m "not slow"
+
+  # Security
+  security:
+    name: Security audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: npm audit (backend)
+        working-directory: backend
+        run: npm audit --audit-level=high
+
+      - name: npm audit (frontend)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+      - name: Trivy - scan filesystem (CVE note + secret leak)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+
+  # Build check
+  build:
+    name: Build immagini Docker (check)
+    needs: [test-backend, test-frontend, test-prophet]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        service: ['backend', 'frontend', 'prophet']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # backend/frontend hanno uno stage "test" nel Dockerfile stesso (COPY --from=test): questo build ripete i test già eseguiti
+      # sopra, ma verifica che il gate unzioni esattamente come nell'immagine che finirà (in CD) sul Raspberry Pi. Per prophet,
+      # verifica che l'immagine compili cmdstanpy senza errori.
+      - name: Build ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  ci-success:
+    name: CI Success
+    needs: [lint-backend, lint-frontend, lint-gateway, test-backend, test-frontend, test-prophet, security, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo "Pipeline CI completata con successo"
