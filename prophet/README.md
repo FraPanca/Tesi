@@ -224,7 +224,6 @@ cd prophet
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements-dev.txt
-pip install pandas==2.2.3 numpy==1.26.4 PyYAML==6.0.2 scikit-learn==1.9.0 requests==2.32.3 python-dotenv==1.2.2
 ```
 
 **`prophet`/`cmdstanpy` sono deliberatamente esclusi** da questa installazione (pur presenti in `requirements.txt`): pesanti da compilare, non necessari per la suite. Un `Prophet` fittizio (`tests/testutils.py`, iniettato in `sys.modules` da `tests/conftest.py`) lo sostituisce nei test, replicando solo il comportamento rilevante (es. il rifiuto di `ds` timezone-aware, come il Prophet vero).
@@ -507,7 +506,6 @@ cd prophet
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements-dev.txt
-pip install pandas==2.2.3 numpy==1.26.4 PyYAML==6.0.2 scikit-learn==1.9.0 requests==2.32.3 python-dotenv==1.2.2
 ```
 
 **`prophet`/`cmdstanpy` are deliberately left out** of this install (even though they're in `requirements.txt`): heavy to compile, not needed for the suite. A fake `Prophet` (`tests/testutils.py`, injected into `sys.modules` by `tests/conftest.py`) replaces it in tests, replicating only the relevant behavior (e.g. rejecting timezone-aware `ds`, like the real Prophet).

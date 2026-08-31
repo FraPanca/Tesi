@@ -108,7 +108,7 @@ Il flusso "dati" procede in un verso (presa → gateway → load balancer → wo
 | `esp32/` | Firmware C++ per load balancer e worker ESP32 | [esp32/README.md](esp32/README.md) |
 | `systemd/` | Unit systemd per l'avvio automatico del sistema | [systemd/README.md](systemd/README.md) |
 
-File nella root: `docker-compose.yml` (orchestrazione dei servizi containerizzati), `manage.sh` (script di avvio/arresto), `backup-mongo.sh` (backup schedulato di MongoDB, vedi "Backup" sotto), `.env.example` (template delle variabili lette da Compose).
+File nella root: `docker-compose.yml` (orchestrazione dei servizi containerizzati), `docker-compose.prod.yml` (overlay opzionale per il deploy da GHCR, vedi [CI/CD](#cicd)), `manage.sh` (script di avvio/arresto), `backup-mongo.sh` (backup schedulato di MongoDB, vedi "Backup" sotto), `.env.example` (template delle variabili lette da Compose, incluso `IMAGE_TAG` per l'overlay).
 
 ### Setup completo del sistema
 
@@ -244,6 +244,15 @@ Dettagli in [`systemd/README.md`](systemd/README.md) e nella sezione "Backup" so
 Suite di test automatizzata su backend (Jest, 101 test), frontend (Vitest, 95 test) e prophet (pytest, 92 test): 288 test in totale sui tre componenti coperti. Gateway e firmware ESP32 restano verificati solo manualmente (`mosquitto_pub`/`sub`, CLI `kasa`, Serial Monitor). Dettagli nei README di [`backend/`](backend/README.md), [`frontend/`](frontend/README.md) e [`prophet/`](prophet/README.md). Per backend e frontend, la tabella di dettaglio per singolo file riflette la suite al momento della sua introduzione (62/48 test); i totali qui sopra sono quelli aggiornati.
 
 Le immagini Docker di backend e frontend includono anche uno stage `test` nella build stessa (`build` → `test` → `production`): `docker compose build` (o `up --build`) esegue la suite come parte della build e si interrompe prima di produrre l'immagine di produzione se i test falliscono.
+
+### CI/CD
+
+Due workflow GitHub Actions, in [`.github/workflows/`](.github/workflows/):
+
+- **`ci.yml`**, ad ogni push/PR su `main`: lint (`oxlint` per backend/frontend, `ruff --select E9,F` per il gateway, solo bug reali, niente stile), test (Jest, Vitest, pytest sulla suite rapida di prophet, senza compilare cmdstanpy), security audit (`npm audit` + scan Trivy del filesystem), build check dei tre Dockerfile (senza push, solo verifica che buildino).
+- **`cd.yml`**, al push di un tag `v*.*.*`: build nativo arm64 (runner `ubuntu-24.04-arm`, gratuito su repo pubbliche, nessuna emulazione QEMU, necessario perché il target è un Raspberry Pi 5) e push su GHCR di backend/frontend/prophet, taggate con la versione e lo short SHA. I package sono pubblici: nessuna autenticazione richiesta per il pull.
+
+**Deploy da GHCR (opzionale, non collegato a systemd)**: `docker-compose.prod.yml` in root è un file overlay, usato solo a comando, `docker compose -f docker-compose.yml -f docker-compose.prod.yml pull/up -d`, che sostituisce la build locale di backend/frontend/prophet con le immagini pubblicate. Richiede `IMAGE_TAG` nell'`.env` di root (es. `IMAGE_TAG=v0.1.0`, vedi `.env.example`). Scelta deliberata: `iot-energy-docker.service` continua a fare build locale al boot, non pull da GHCR, per non far dipendere l'avvio del sistema dalla raggiungibilità di internet, mongodb/redis/mosquitto non ne hanno bisogno.
 
 ### Backup
 
@@ -384,7 +393,7 @@ The "data" flow moves in one direction (plug → gateway → load balancer → w
 | `esp32/` | C++ firmware for the load balancer and worker ESP32 boards | [esp32/README.md](esp32/README.md) |
 | `systemd/` | systemd units for automatic system startup | [systemd/README.md](systemd/README.md) |
 
-Files in the root: `docker-compose.yml` (orchestration of the containerized services), `manage.sh` (start/stop wrapper script), `backup-mongo.sh` (scheduled MongoDB backup, see "Backup" below), `.env.example` (template of the variables read by Compose).
+Files in the root: `docker-compose.yml` (orchestration of the containerized services), `docker-compose.prod.yml` (optional overlay for GHCR-based deploy, see [CI/CD](#cicd)), `manage.sh` (start/stop wrapper script), `backup-mongo.sh` (scheduled MongoDB backup, see "Backup" below), `.env.example` (template of the variables read by Compose, including `IMAGE_TAG` for the overlay).
 
 ### Full system setup
 
@@ -520,6 +529,15 @@ Details in [`systemd/README.md`](systemd/README.md) and in the "Backup" section 
 Automated test suite on the backend (Jest, 101 tests), frontend (Vitest, 95 tests), and prophet (pytest, 92 tests): 288 tests in total across the three components covered. The gateway and ESP32 firmware are still only verified manually (`mosquitto_pub`/`sub`, the `kasa` CLI, Serial Monitor). Details in the [`backend/`](backend/README.md), [`frontend/`](frontend/README.md), and [`prophet/`](prophet/README.md) READMEs. For backend and frontend, the per-file breakdown table reflects the suite as it was introduced (62/48 tests); the totals above are the updated ones.
 
 The backend and frontend Docker images also include a `test` stage in the build itself (`build` → `test` → `production`): `docker compose build` (or `up --build`) runs the suite as part of the build and stops before producing the production image if the tests fail.
+
+### CI/CD
+
+Two GitHub Actions workflows, in [`.github/workflows/`](.github/workflows/):
+
+- **`ci.yml`**, on every push/PR to `main`: lint (`oxlint` for backend/frontend, `ruff --select E9,F` for the gateway, real bugs only, no style), test (Jest, Vitest, pytest on prophet's fast suite, no cmdstanpy compilation), security audit (`npm audit` + Trivy filesystem scan), build check of the three Dockerfiles (no push, just a build verification).
+- **`cd.yml`**, on push of a `v*.*.*` tag: native arm64 build (`ubuntu-24.04-arm` runner, free on public repos, no QEMU emulation, needed since the target is a Raspberry Pi 5) and push to GHCR for backend/frontend/prophet, tagged with the version and the short SHA. Packages are public: no authentication needed to pull.
+
+**Deploy from GHCR (optional, not wired into systemd)**: `docker-compose.prod.yml` in root is an overlay file, used only on demand, `docker compose -f docker-compose.yml -f docker-compose.prod.yml pull/up -d`, that replaces the local build of backend/frontend/prophet with the published images. Requires `IMAGE_TAG` in the root `.env` (e.g. `IMAGE_TAG=v0.1.0`, see `.env.example`). Deliberate choice: `iot-energy-docker.service` keeps building locally at boot, not pulling from GHCR, so system startup doesn't depend on internet reachability, mongodb/redis/mosquitto don't need it anyway.
 
 ### Backup
 

@@ -55,6 +55,7 @@ WantedBy=timers.target
 - `TimeoutStartSec=600`: margine ampio rispetto al tempo reale di esecuzione (pochi secondi una volta che l'immagine è già costruita), pensato per assorbire eventuali rallentamenti, non perché il job richieda davvero 10 minuti.
 - `iot-mongo-backup.service` usa lo stesso pattern `After=` senza `Requires=` verso lo stack Docker, per lo stesso motivo del job Prophet: se lo stack è stato fermato deliberatamente, il backup deve fallire in modo visibile, non farlo ripartire di nascosto.
 - `iot-mongo-backup.timer` è schedulato alle 03:00, orario scelto per non competere per I/O con `iot-prophet-forecast.timer`, che gira alle 00:05.
+- `iot-energy-docker.service` **non** usa `docker-compose.prod.yml` (l'overlay per il deploy da immagini GHCR, vedi [CI/CD nel README di root](../README.md#cicd)): resta build locale al boot, di proposito. Con l'overlay e il suo `pull_policy: always`, un riavvio del Pi senza internet (router giù, ecc.) bloccherebbe l'avvio dell'intero stack in attesa del pull, anche per mongodb/redis/mosquitto che non ne avrebbero bisogno. `docker-compose.prod.yml` resta quindi un comando manuale, non agganciato al boot.
 
 ### Struttura interna
 
@@ -201,6 +202,7 @@ WantedBy=timers.target
 - `TimeoutStartSec=600`: a generous margin compared to the actual execution time (a few seconds once the image is already built), meant to absorb occasional slowdowns, not because the job actually needs 10 minutes.
 - `iot-mongo-backup.service` uses the same `After=` without `Requires=` pattern toward the Docker stack, for the same reason as the Prophet job: if the stack was stopped deliberately, the backup must fail visibly, not silently bring it back up.
 - `iot-mongo-backup.timer` is scheduled at 03:00, a time chosen to avoid competing for I/O with `iot-prophet-forecast.timer`, which runs at 00:05.
+- `iot-energy-docker.service` **does not** use `docker-compose.prod.yml` (the overlay for GHCR-based deploy, see [CI/CD in the root README](../README.md#cicd)): it stays local build at boot, deliberately. With the overlay and its `pull_policy: always`, a Pi reboot without internet (router down, etc.) would block the entire stack's startup waiting on the pull, even for mongodb/redis/mosquitto, which don't need it at all. `docker-compose.prod.yml` therefore stays a manual command, not wired into boot.
 
 ### Internal structure
 

@@ -147,6 +147,15 @@ docker exec -it mosquitto mosquitto_pub -t "home/system/healthcheck" -m '{}' -u 
 kasa --host <ip> --username <TAPO_USERNAME> --password <TAPO_PASSWORD> discover
 ```
 
+### Lint
+
+```bash
+pip install ruff
+ruff check --select E9,F src
+```
+
+Solo errori di sintassi (`E9`) e pyflakes (`F`: import inutilizzati, nomi non definiti), niente regole di stile: il gateway non ha mai avuto uno stile imposto. `ruff` non è nei `requirements.txt`: viene installato al volo, sia in locale sia in CI (job `lint-gateway`, vedi [CI/CD nel README di root](../README.md#cicd)).
+
 ### Note e limiti noti
 
 - Timestamp nel payload `raw`: epoch UTC in secondi (`time.time()`), non ISO 8601. Backend e modulo Prophet devono trattarlo in modo coerente.
@@ -300,6 +309,15 @@ docker exec -it mosquitto mosquitto_pub -t "home/system/healthcheck" -m '{}' -u 
 ```bash
 kasa --host <ip> --username <TAPO_USERNAME> --password <TAPO_PASSWORD> discover
 ```
+
+### Lint
+
+```bash
+pip install ruff
+ruff check --select E9,F src
+```
+
+Only syntax errors (`E9`) and pyflakes (`F`: unused imports, undefined names), no style rules: the gateway never had an enforced style. `ruff` isn't in `requirements.txt`: it's installed on the fly, both locally and in CI (`lint-gateway` job, see [CI/CD in the root README](../README.md#cicd)).
 
 ### Notes and known limitations
 

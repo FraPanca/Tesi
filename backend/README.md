@@ -93,6 +93,14 @@ Sequenza di avvio attesa nei log: `[MongoDB] connesso`, poi `[Redis] connesso`, 
 
 Il `Dockerfile` è multi-stage in tre fasi (`build` → `test` → `production`): lo stage `test` esegue `npm run test` come parte della build stessa, quindi il codice non supera mai lo stage di produzione senza che i test siano passati. Perché lo stage `test` venga effettivamente eseguito (Docker costruisce solo gli stage referenziati dallo stage finale), `production` include un `COPY --from=test` mirato a un file che non serve a runtime, usato solo per forzare `test` nel grafo di build: se i test falliscono, la build si interrompe lì, prima che l'immagine di produzione venga creata.
 
+### Lint
+
+```bash
+npm run lint   # oxlint, stessa versione e filosofia del frontend
+```
+
+Config in `.oxlintrc.json` (plugin `jest` e `oxc`). Gira anche in CI (job `lint-backend`), vedi [CI/CD nel README di root](../README.md#cicd).
+
 ### Struttura interna
 
 ```
@@ -386,6 +394,14 @@ docker compose logs -f backend
 Expected startup sequence in the logs: `[MongoDB] connesso`, then `[Redis] connesso`, then `[MQTT] connesso al broker`, then `[Server] in ascolto sulla porta 3000`. The service depends on `mongodb`/`redis`/`mosquitto` (`condition: service_healthy`) and won't start before they are ready.
 
 The `Dockerfile` is multi-stage in three phases (`build` → `test` → `production`): the `test` stage runs `npm run test` as part of the build itself, so the code never reaches the production stage without the tests passing. For the `test` stage to actually run (Docker only builds the stages referenced by the final stage), `production` includes a targeted `COPY --from=test` of a file that isn't needed at runtime, used only to force `test` into the build graph: if the tests fail, the build stops there, before the production image is created.
+
+### Lint
+
+```bash
+npm run lint   # oxlint, same version and philosophy as the frontend
+```
+
+Config in `.oxlintrc.json` (`jest` and `oxc` plugins). Also runs in CI (`lint-backend` job), see [CI/CD in the root README](../README.md#cicd).
 
 ### Internal structure
 
