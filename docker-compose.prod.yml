@@ -1,0 +1,10 @@
+services:
+  backend:
+    image: ghcr.io/frapanca/iot-energy-backend:${IMAGE_TAG:?variabile IMAGE_TAG mancante, es. IMAGE_TAG=v0.1.0}
+    pull_policy: always
+  frontend:
+    image: ghcr.io/frapanca/iot-energy-frontend:${IMAGE_TAG:?variabile IMAGE_TAG mancante, es. IMAGE_TAG=v0.1.0}
+    pull_policy: always
+  prophet:
+    image: ghcr.io/frapanca/iot-energy-prophet:${IMAGE_TAG:?variabile IMAGE_TAG mancante, es. IMAGE_TAG=v0.1.0}
+    pull_policy: always
