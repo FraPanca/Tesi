@@ -19,6 +19,5 @@ Prophet().fit(df); \
 print('warm-up Prophet/Stan completato')"
  
 COPY src ./src
-COPY config ./config
 
 CMD ["python", "src/main.py"]

@@ -110,6 +110,7 @@ services:
       - backend
     volumes:
       - ./prophet/output:/app/output # Necessario SOLO per evaluation/genera_grafico.py
+      - ./prophet/config:/app/config:ro
     networks: [backend-net]
 
 networks:
