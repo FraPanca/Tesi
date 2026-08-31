@@ -11,6 +11,7 @@ mosquitto/config/passwordfile
 gateway/venv/
 prophet/venv/
 prophet/.pytest_cache/
+gateway/.ruff_cache/
 **/__pycache__/
 *.pyc
 *.pyo

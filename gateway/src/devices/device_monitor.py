@@ -7,7 +7,7 @@ from kasa.module import Module
 
 from config import USERNAME, PASSWORD, POLLING_INTERVAL, WARNING_INTERVAL, BACKOFF_TIME
 from mqtt.mqtt_publisher import publish
-from logger.energy_logger import *
+from logger.energy_logger import log_energy, log_error, log_warning
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
