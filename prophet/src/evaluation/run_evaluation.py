@@ -27,7 +27,7 @@ def main():
         sys.exit(1)
 
     presa_id = sys.argv[1]
-    cutoff_candidati = [datetime.fromisoformat(c) for c in sys.argv[2:]]
+    cutoff_candidati = [datetime.fromisoformat(c).astimezone(_TZ) for c in sys.argv[2:]]
 
     fine = max(cutoff_candidati) + timedelta(hours=ORIZZONTE_ORE)
     inizio = min(cutoff_candidati) - timedelta(days=STORICO_RICHIESTO_GIORNI)

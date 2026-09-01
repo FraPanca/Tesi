@@ -33,7 +33,7 @@ def main():
         sys.exit(1)
 
     presa_id = sys.argv[1]
-    cutoff = datetime.fromisoformat(sys.argv[2])
+    cutoff = datetime.fromisoformat(sys.argv[2]).astimezone(_TZ)
     percorso_output = sys.argv[3]
 
     fine = cutoff + timedelta(hours=ORIZZONTE_ORE)
